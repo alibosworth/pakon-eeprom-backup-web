@@ -25,17 +25,23 @@ browser, is the answer to "can you do a tutorial".
 ## What it does
 
 1. Connect to the scanner (`0f05:f235` cold, or `0f05:f135` if already
-   loaded).
-2. If cold, load the application firmware into RAM: the standard Cypress
-   FX2 load every client and the OEM perform after every power-on. RAM is
-   wiped at power-off; this is not an EEPROM write. The image is picked from
-   the scanner's own revision byte, and its SHA-256 is checked before
-   anything is sent.
+   loaded). The page shows the revision it detected and which firmware
+   image that means.
+2. On a second click, load that firmware into RAM: the standard Cypress FX2
+   load every client and the OEM perform after every power-on. RAM is wiped
+   at power-off; this is not an EEPROM write. Before sending: the image's
+   SHA-256 must match, the loader's 8-byte personality must carry the
+   expected id/VID/PID, and the revision it reports must equal the one the
+   scanner announced on USB (bcdDevice); any disagreement stops the page
+   without loading anything.
 3. Read the calibration EEPROM with the OEM engine's own two requests
    (`0xA4 wValue 0x00A5 wIndex 0x1234` select, then `0xA9` at byte offsets),
-   both copies of both sections, plus the 8-byte boot personality read
-   during the load. Verify all four CRC-32s, compare primary with backup,
-   decode the serial so you can see it is your unit.
+   both copies of both sections. Verify all four CRC-32s and the expected
+   lengths (398 and 36 bytes), compare primary with backup, decode the
+   serial so you can see it is your unit. The 8-byte personality the loader
+   reported in step 2 is saved too, labelled as such: it is the loader's
+   descriptor (id, VID, PID, revision), not a raw dump of the boot chip, and
+   it is the same on every F-135.
 4. Download the files, named with the serial and date, plus a `SHA256SUMS`.
 
 Every USB request the code can issue is listed at the top of `app.js`; there
@@ -44,8 +50,13 @@ is no `0xA2` (EEPROM write) and no bulk transfer anywhere in it.
 ## Firmware files, and why they are here
 
 `firmware/Pakon5.hex`, `Pakon7.hex`, `Pakon8.hex` are Kodak's application
-firmware for the three F-135 revisions, taken from the Pakon software
-installer. They are Kodak's property. They are hosted here because the
+firmware for the three F-135 revisions, taken from the `FX35Driver/` folder
+of an unmodified install of the Pakon F-X35 software (the same installer
+the community mirrors). The OEM install tree also carries a different build
+of `Pakon7.hex` under `F-135/F135Driver/` (10 326-byte image versus 10 355);
+the one here is the `FX35Driver/` build, which is byte-identical to the
+file pakon-tlx-macos loaded onto F-135+ serial 16402 on 18 August 2026, so
+it is the build proven on hardware. They are Kodak's property. They are hosted here because the
 scanner cannot be read without them, they have been publicly mirrored for
 years, and hosting them with a pinned hash is safer than fetching them from
 somewhere at run time. If Kodak (or its successor in interest) objects,
@@ -60,8 +71,10 @@ in `app.js`.
 ## Platform notes
 
 - **macOS**: works. No kernel driver claims the scanner.
-- **Linux**: works once your user may open the device; a udev rule such as
-  `SUBSYSTEM=="usb", ATTR{idVendor}=="0f05", MODE="0666"`.
+- **Linux**: works once your user may open the device. Put
+  `SUBSYSTEM=="usb", ATTR{idVendor}=="0f05", TAG+="uaccess"` in
+  `/etc/udev/rules.d/70-pakon.rules`, `sudo udevadm control --reload`,
+  replug. (`uaccess` grants the logged-in seat, not every account.)
 - **Windows**: the Pakon driver owns the device. WebUSB needs the WinUSB
   driver bound (Zadig), which stops the Pakon software working until you
   swap back. If you have the Kodak software installed, its own copy of most

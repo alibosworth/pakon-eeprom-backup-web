@@ -41,3 +41,7 @@ tr.bad td:nth-child(4) { color: var(--bad); font-weight: 600; }
 .fineprint { margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1.5rem; font-size: .95rem; }
 .fineprint ul { padding-left: 1.2rem; }
 a { color: var(--accent); }
+.notice { background: var(--panel); border: 1px solid var(--border); border-left: 5px solid var(--ok); border-radius: 6px; padding: .75rem 1rem; }
+.notice.warn { border-left-color: var(--warn); }
+.muted { color: var(--muted); }
+.step[data-state="blocked"] { border-left-color: var(--bad); }

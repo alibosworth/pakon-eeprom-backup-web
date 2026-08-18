@@ -23,6 +23,9 @@ const FIRMWARE_SHA256 = {
   "Pakon8.hex": "1f21fb0809a432ab1b4c4cf566be609a2eee9c156017018e645a8088aab70a67",
 };
 const REVISION_TO_FIRMWARE = { 0xaa05: "Pakon5.hex", 0xaa07: "Pakon7.hex", 0xaa08: "Pakon8.hex" };
+// The 8-byte DEVICE_PERSONALITY the loader returns: id, VID (LE), PID (LE), revision (LE), one more byte.
+const PERSONALITY_ID = 0xc0;
+const PERSONALITY_LENGTH = 8;
 
 // FX2 loader constants (FX35Loader.c / pakon-tlx-macos server/pakonload.py)
 const REQUEST_LOAD_INTERNAL = 0xa0;
@@ -39,11 +42,13 @@ const LOADER_INIT_VALUE = 0xa1;
 const EEPROM_INDEX = 0x1234;
 const EEPROM_READ_SELECT = 0x00a5;   // (0x52 << 1) | 1 : chip 0x52, read direction
 const EEPROM_CHUNK_BYTES = 32;
+const SECTION_A_LENGTH = 398;
+const SECTION_B_LENGTH = 36;
 const SECTIONS = [
-  { name: "sectionA_primary", base: 0x000, maxLength: 0x400, pair: "sectionA_backup" },
-  { name: "sectionA_backup", base: 0x400, maxLength: 0x400 },
-  { name: "sectionB_primary", base: 0x800, maxLength: 0x200, pair: "sectionB_backup" },
-  { name: "sectionB_backup", base: 0xa00, maxLength: 0x200 },
+  { name: "sectionA_primary", base: 0x000, maxLength: 0x400, expectedLength: SECTION_A_LENGTH, pair: "sectionA_backup" },
+  { name: "sectionA_backup", base: 0x400, maxLength: 0x400, expectedLength: SECTION_A_LENGTH },
+  { name: "sectionB_primary", base: 0x800, maxLength: 0x200, expectedLength: SECTION_B_LENGTH, pair: "sectionB_backup" },
+  { name: "sectionB_backup", base: 0xa00, maxLength: 0x200, expectedLength: SECTION_B_LENGTH },
 ];
 
 // ---------------------------------------------------------------- utilities
@@ -107,17 +112,26 @@ function todayStamp() {
 // ---------------------------------------------------------- Intel HEX parsing
 
 function parseIntelHex(text) {
+  // Strict: every line must be a well-formed record with a good checksum, only
+  // data (0) and EOF (1) record types, and EOF must be last. Anything else throws.
   const records = [];
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line.startsWith(":")) continue;
+  let sawEof = false;
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  for (const line of lines) {
+    if (!line.startsWith(":") || line.length % 2 !== 1 || !/^:[0-9A-Fa-f]+$/.test(line)) throw new Error("Intel HEX: malformed line");
     const bytes = Uint8Array.from(line.slice(1).match(/../g), (pair) => parseInt(pair, 16));
     const length = bytes[0];
+    if (bytes.length !== length + 5) throw new Error("Intel HEX: record length does not match its length byte");
+    const checksum = bytes.reduce((sum, byte) => (sum + byte) & 0xff, 0);
+    if (checksum !== 0) throw new Error("Intel HEX: record checksum failed");
     const address = (bytes[1] << 8) | bytes[2];
     const type = bytes[3];
-    if (type === 0) records.push({ address, data: bytes.slice(4, 4 + length) });
-    // type 1 = EOF; other types are not used by these images
+    if (type === 1) { sawEof = true; continue; }   // a repeated EOF (the Cypress loader has two) is harmless
+    if (type !== 0) throw new Error(`Intel HEX: unsupported record type ${type}`);
+    if (sawEof) throw new Error("Intel HEX: data record after EOF");
+    records.push({ address, data: bytes.slice(4, 4 + length) });
   }
+  if (!sawEof) throw new Error("Intel HEX: no EOF record");
   return records;
 }
 
@@ -136,6 +150,16 @@ async function fetchFirmware(name) {
 // ------------------------------------------------------------- USB plumbing
 
 let device = null;
+let busy = false;
+
+function setBusy(state) {
+  busy = state;
+  document.getElementById("connectButton").disabled = state;
+  const step2 = document.getElementById("step2").dataset.state;
+  const step3 = document.getElementById("step3").dataset.state;
+  document.getElementById("loadButton").disabled = state || step2 !== "ready";
+  document.getElementById("readButton").disabled = state || (step3 !== "ready" && step3 !== "done");
+}
 
 async function openDevice(candidate) {
   await candidate.open();
@@ -160,6 +184,7 @@ async function controlOut(request, value, index, data) {
 async function controlIn(request, value, index, length) {
   const result = await device.controlTransferIn({ requestType: "vendor", recipient: "device", request, value, index }, length);
   if (result.status !== "ok") throw new Error(`control IN 0x${hex(request)} failed: ${result.status}`);
+  if (result.data.byteLength !== length) throw new Error(`control IN 0x${hex(request)}: short read (${result.data.byteLength} of ${length} bytes)`);
   return new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
 }
 
@@ -200,13 +225,24 @@ async function loadFirmware() {
   await hold8051(0);
   await controlOut(REQUEST_INIT_OR_SELECT, LOADER_INIT_VALUE, 0);
 
-  const personality = await controlIn(REQUEST_READ, 0, 0, 8);
-  bootPersonality = personality.slice();
+  const personality = await controlIn(REQUEST_READ, 0, 0, PERSONALITY_LENGTH);
+  const personalityId = personality[0];
+  const personalityVendor = readU16(personality, 1);
+  const personalityProduct = readU16(personality, 3);
   const revision = readU16(personality, 5);
-  log(`Boot personality: ${bytesToHex(personality)}  (revision 0x${hex(revision, 4)})`);
+  log(`Boot personality (as reported by the loader): ${bytesToHex(personality)}  (revision 0x${hex(revision, 4)})`);
+  if (personalityId !== PERSONALITY_ID || personalityVendor !== VENDOR_ID || personalityProduct !== PRODUCT_ID_COLD) {
+    throw new Error(`the scanner's personality does not look like a Pakon F-135 (id 0x${hex(personalityId)}, ${hex(personalityVendor, 4)}:${hex(personalityProduct, 4)}); stopping before loading any firmware`);
+  }
+  // Cross-check against the revision the cold device announced on USB (bcdDevice).
+  const usbRevision = ((device.deviceVersionMajor & 0xff) << 8) | ((device.deviceVersionMinor & 0xf) << 4) | (device.deviceVersionSubminor & 0xf);
+  if (usbRevision !== revision) {
+    throw new Error(`the loader reports revision 0x${hex(revision, 4)} but the scanner announced 0x${hex(usbRevision, 4)} on USB; the two must agree before any firmware is loaded. Power-cycle the scanner and try again`);
+  }
+  bootPersonality = personality.slice();
 
   const firmwareName = REVISION_TO_FIRMWARE[revision];
-  if (!firmwareName) throw new Error(`no application firmware known for revision 0x${hex(revision, 4)}; stopping`);
+  if (!firmwareName) throw new Error(`no F-135 application firmware is known for revision 0x${hex(revision, 4)}; stopping without loading anything`);
   log(`Loading application firmware ${firmwareName}…`);
   const application = await fetchFirmware(firmwareName);
   await downloadRecords(application);
@@ -239,7 +275,9 @@ async function readSection(section) {
     bytes.set(chunk, offset);
   }
   const computedCrc = plausible ? crc32(bytes.subarray(8, length)) : null;
-  return { ...section, bytes, length, storedCrc, computedCrc, valid: plausible && computedCrc === storedCrc, plausible };
+  const crcOk = plausible && computedCrc === storedCrc;
+  const lengthOk = length === section.expectedLength;
+  return { ...section, bytes, length, storedCrc, computedCrc, plausible, crcOk, lengthOk, valid: crcOk && lengthOk };
 }
 
 function decodeSectionA(bytes) {
@@ -256,6 +294,8 @@ const results = { sections: [], serial: null };
 function setStep(stepNumber, state) {
   const step = document.getElementById(`step${stepNumber}`);
   step.dataset.state = state;
+  if (stepNumber === 2) document.getElementById("loadButton").disabled = state !== "ready";
+  if (stepNumber === 3) document.getElementById("readButton").disabled = state !== "ready" && state !== "done";
 }
 
 function showError(error) {
@@ -272,21 +312,47 @@ async function requestScanner(filters) {
   return device;
 }
 
+let pendingFirmwareName = null;
+
 async function onConnectClick() {
+  if (busy) return;
+  setBusy(true);
   try {
     document.getElementById("errorHint").hidden = true;
     await requestScanner([
       { vendorId: VENDOR_ID, productId: PRODUCT_ID_COLD },
       { vendorId: VENDOR_ID, productId: PRODUCT_ID_LOADED },
     ]);
+    setStep(1, "done");
     if (device.productId === PRODUCT_ID_LOADED) {
-      log("The scanner already has firmware running; skipping the load step.");
-      setStep(1, "done");
+      log("The scanner already has its firmware running; step 2 is not needed.");
       setStep(2, "done");
       setStep(3, "ready");
       return;
     }
-    setStep(1, "done");
+    const usbRevision = ((device.deviceVersionMajor & 0xff) << 8) | ((device.deviceVersionMinor & 0xf) << 4) | (device.deviceVersionSubminor & 0xf);
+    pendingFirmwareName = REVISION_TO_FIRMWARE[usbRevision] || null;
+    const detected = document.getElementById("detected");
+    if (pendingFirmwareName) {
+      detected.textContent = `Detected a cold F-135-family scanner, revision 0x${hex(usbRevision, 4)}. Its original firmware for this revision is ${pendingFirmwareName}; click below to send it.`;
+      setStep(2, "ready");
+    } else {
+      detected.textContent = `This scanner announces revision 0x${hex(usbRevision, 4)}, which is not one this page knows firmware for (F-135 revisions are aa05, aa07, aa08). Stopping here.`;
+      setStep(2, "blocked");
+    }
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function onLoadClick() {
+  if (busy) return;
+  setBusy(true);
+  try {
+    document.getElementById("errorHint").hidden = true;
+    if (!device || device.productId !== PRODUCT_ID_COLD) throw new Error("connect to a cold scanner first (step 1)");
     setStep(2, "busy");
     await loadFirmware();
     try { await device.close(); } catch (error) { /* already gone */ }
@@ -295,10 +361,15 @@ async function onConnectClick() {
     setStep(3, "ready");
   } catch (error) {
     showError(error);
+    setStep(2, "ready");
+  } finally {
+    setBusy(false);
   }
 }
 
 async function onReadClick() {
+  if (busy) return;
+  setBusy(true);
   try {
     document.getElementById("errorHint").hidden = true;
     if (!device || device.productId !== PRODUCT_ID_LOADED) {
@@ -310,7 +381,7 @@ async function onReadClick() {
     for (const section of SECTIONS) {
       const read = await readSection(section);
       results.sections.push(read);
-      const verdict = read.valid ? "CRC ok" : read.plausible ? "CRC MISMATCH" : "no valid header";
+      const verdict = read.valid ? "CRC ok" : read.crcOk ? `CRC ok but unexpected length (expected ${read.expectedLength})` : read.plausible ? "CRC MISMATCH" : "no valid header";
       log(`  ${read.name.padEnd(17)} @0x${hex(read.base, 3)}  ${read.length} bytes  ${verdict}`, read.valid ? "ok" : "warn");
     }
     renderResults();
@@ -319,6 +390,8 @@ async function onReadClick() {
   } catch (error) {
     showError(error);
     setStep(3, "ready");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -343,24 +416,39 @@ function renderResults() {
         note = "identical to the backup copy";
       }
     }
-    rows.push(`<tr class="${section.valid ? "good" : "bad"}"><td>${section.name.replace("_", " ")}</td><td>0x${hex(section.base, 3)}</td><td>${section.length}</td><td>${section.valid ? "good" : section.plausible ? "bad CRC" : "no header"}</td><td>${note}</td></tr>`);
+    const verdict = section.valid ? "good" : section.crcOk ? "unexpected length" : section.plausible ? "bad CRC" : "no header";
+    rows.push(`<tr class="${section.valid ? "good" : "bad"}"><td>${section.name.replace("_", " ")}</td><td>0x${hex(section.base, 3)}</td><td>${section.length}</td><td>${verdict}</td><td>${note}</td></tr>`);
   }
   table.innerHTML = rows.join("");
 
-  const goodA = sectionByName("sectionA_primary").valid ? sectionByName("sectionA_primary") : sectionByName("sectionA_backup").valid ? sectionByName("sectionA_backup") : null;
+  const primaryA = sectionByName("sectionA_primary");
+  const backupA = sectionByName("sectionA_backup");
+  const primaryB = sectionByName("sectionB_primary");
+  const backupB = sectionByName("sectionB_backup");
+  const goodA = primaryA.valid ? primaryA : backupA.valid ? backupA : null;
+  const goodB = primaryB.valid ? primaryB : backupB.valid ? backupB : null;
+  const allFour = primaryA.valid && backupA.valid && primaryB.valid && backupB.valid;
   const summary = document.getElementById("summary");
+  const parts = [];
   if (goodA) {
     const decoded = decodeSectionA(goodA.bytes);
     results.serial = decoded.serial;
-    summary.innerHTML = `
-      <p>This is scanner <strong>serial ${decoded.serial}</strong>. Motor speeds per resolution base (offset / normal / IR):
+    parts.push(`<p>This is scanner <strong>serial ${decoded.serial}</strong>. Motor speeds per resolution base (offset / normal / IR):
       base 4 = ${decoded.triples[0].join(" / ")}, base 8 = ${decoded.triples[1].join(" / ")}, base 16 = ${decoded.triples[2].join(" / ")}.
-      Negative matrix diagonal ${decoded.negDiagonal.map((value) => value.toFixed(4)).join(", ")}.</p>
-      ${sectionByName("sectionA_primary").valid ? "" : "<p><strong>Your primary copy of section A is bad and the backup copy is good.</strong> This is common on these scanners (both units checked so far are like this); the OEM software silently uses the backup. It is not a reason to write anything to the scanner. If this chip ever needs restoring, restore section A from the <em>backup</em> file.</p>"}
-      ${goodA.valid && sectionByName("sectionB_primary").valid ? "<p>You have a complete, verified backup. Download the files below and keep them somewhere safe (two places is better than one).</p>" : ""}`;
-  } else {
-    summary.innerHTML = `<p><strong>Neither copy of section A verified.</strong> Keep the files anyway (they may still be readable), power-cycle the scanner and try again; if it repeats, the chip may be failing and these files are what you have.</p>`;
+      Negative matrix diagonal ${decoded.negDiagonal.map((value) => value.toFixed(4)).join(", ")}.</p>`);
   }
+  const pairNote = (label, primary, backup) => {
+    if (primary.valid && backup.valid) return `<p>Section ${label}: both copies good.</p>`;
+    if (!primary.valid && backup.valid) return `<p><strong>Section ${label}: the primary copy is bad and the backup copy is good.</strong> This is common on these scanners (both units checked before this one were like this); the OEM software silently uses the backup. It is not a reason to write anything to the scanner. If this chip ever needs restoring, restore section ${label} from the <em>backup</em> file.</p>`;
+    if (primary.valid && !backup.valid) return `<p><strong>Section ${label}: the primary copy is good and the backup copy is bad.</strong> The scanner works from the primary. Keep both files; if restoring, use the <em>primary</em> file for section ${label}.</p>`;
+    return `<p><strong>Section ${label}: neither copy verified.</strong> Keep the files anyway, power-cycle the scanner and read again; if it repeats, the chip may be failing and these files are what you have.</p>`;
+  };
+  parts.push(pairNote("A", primaryA, backupA));
+  parts.push(pairNote("B", primaryB, backupB));
+  if (allFour) parts.push("<p><strong>All four copies verified.</strong> Download the files below and keep them somewhere safe (two places is better than one).</p>");
+  else if (goodA && goodB) parts.push("<p><strong>Sufficient for recovery:</strong> at least one good copy of each section. Download the files below and keep them somewhere safe (two places is better than one).</p>");
+  else parts.push("<p><strong>Not a complete backup yet.</strong> Download what was read, then try again after a power-cycle.</p>");
+  summary.innerHTML = parts.join("");
   renderDownloads();
   document.getElementById("results").hidden = false;
 }
@@ -383,7 +471,9 @@ async function renderDownloads() {
   const prefix = `pakon-eeprom-serial${results.serial === null ? "unknown" : results.serial}-${todayStamp()}`;
   const files = [];
   for (const section of results.sections) files.push({ name: `${prefix}-0x52-${section.name}.bin`, bytes: section.bytes });
-  if (bootPersonality) files.push({ name: `${prefix}-0x51-boot-personality.bin`, bytes: bootPersonality });
+  // The 8 bytes the loader reports (id, VID, PID, revision, one more byte), not a raw dump of the
+  // 0x51 chip. Its contents are the same on every F-135 and are replaceable; kept for the record.
+  if (bootPersonality) files.push({ name: `${prefix}-personality-8-bytes-from-loader.bin`, bytes: bootPersonality });
   const sums = [];
   for (const file of files) sums.push(`${await sha256Hex(file.bytes)}  ${file.name}`);
   files.push({ name: `${prefix}-SHA256SUMS`, bytes: new TextEncoder().encode(sums.join("\n") + "\n") });
@@ -406,12 +496,45 @@ async function renderDownloads() {
   container.prepend(all);
 }
 
+function describePlatform() {
+  const agent = navigator.userAgent || "";
+  const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+  const isMac = /Mac/i.test(platform) && !/iPhone|iPad/i.test(agent);
+  const isWindows = /Win/i.test(platform);
+  const isLinux = /Linux/i.test(platform) && !/Android/i.test(agent);
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(agent);
+  const isFirefox = /Firefox/i.test(agent);
+  const isSafari = /Safari/i.test(agent) && !/Chrome|Chromium|Edg/i.test(agent);
+  return { isMac, isWindows, isLinux, isMobile, isFirefox, isSafari, hasWebUsb: "usb" in navigator };
+}
+
+function showPlatformNotice() {
+  const notice = document.getElementById("platformNotice");
+  const info = describePlatform();
+  let html = "";
+  if (!info.hasWebUsb) {
+    if (info.isMobile) html = "<strong>Phones and tablets can't do this.</strong> Use a Mac or Linux computer with Chrome or Edge.";
+    else if (info.isFirefox || info.isSafari) html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge; Safari and Firefox don't support WebUSB.";
+    else html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge.";
+  } else if (info.isWindows) {
+    html = "<strong>Windows: this page will most likely not see your scanner.</strong> The Pakon driver keeps the scanner to itself, and giving Chrome access means replacing that driver, which stops the Pakon software working until you put it back. If you have the Kodak software installed, use its own copy instead: export the registry key <code>HKLM\\Software\\Pakon\\TLB\\ColorKodak</code> (Regedit, right-click, Export) and keep that file. It is not the raw chip, but it is most of the data.";
+  } else if (info.isLinux) {
+    html = "<strong>Linux: one thing to do first.</strong> Your user needs permission to open the scanner. Create <code>/etc/udev/rules.d/70-pakon.rules</code> containing <code>SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0f05\", TAG+=\"uaccess\"</code>, run <code>sudo udevadm control --reload</code>, then unplug and replug the scanner.";
+  } else if (info.isMac) {
+    html = "<strong>Mac: nothing to install.</strong> Plug the scanner in and follow the three steps.";
+  }
+  notice.innerHTML = html;
+  notice.hidden = html === "";
+  notice.className = info.hasWebUsb && !info.isWindows ? "notice" : "notice warn";
+}
+
 function init() {
+  showPlatformNotice();
   const supported = "usb" in navigator;
-  document.getElementById("unsupported").hidden = supported;
   document.getElementById("app").hidden = !supported;
   if (!supported) return;
   document.getElementById("connectButton").addEventListener("click", onConnectClick);
+  document.getElementById("loadButton").addEventListener("click", onLoadClick);
   document.getElementById("readButton").addEventListener("click", onReadClick);
   navigator.usb.addEventListener("disconnect", (event) => {
     if (device && event.device === device) {
