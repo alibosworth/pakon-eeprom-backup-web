@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pakon EEPROM Backup</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<h1>Back up your Pakon scanner's calibration</h1>
+
+<p class="lede">Every Pakon F-135 and F-135+ carries a small memory chip holding data that is
+unique to that one scanner: its serial number, its motor speeds, and its colour
+matrices. If that chip fails there is nothing to download and no way to recreate
+it. This page reads it and gives you the files to keep. It reads only; it never
+writes to the scanner.</p>
+
+<div id="unsupported" hidden>
+  <p><strong>This browser can't talk to USB devices.</strong> Open this page in
+  Chrome or Edge on a Mac or Linux computer. Safari and Firefox don't support
+  WebUSB, and on Windows the Pakon driver keeps the scanner to itself (see the
+  note at the bottom).</p>
+</div>
+
+<div id="app" hidden>
+
+<section id="step1" class="step" data-state="ready">
+  <h2>1. Plug in and power on the scanner, then connect</h2>
+  <p>Turn the scanner on, wait for the lights to settle, then click Connect.
+  Chrome will show a small window listing USB devices; choose the Pakon
+  (<code>0f05:f235</code> when freshly powered on).</p>
+  <button id="connectButton" class="primary">Connect to the scanner</button>
+</section>
+
+<section id="step2" class="step" data-state="waiting">
+  <h2>2. Load the scanner's firmware</h2>
+  <p>Happens automatically after Connect. The scanner keeps its working program in
+  memory that is wiped every time it is switched off, so whatever software you
+  use, this same load happens every time it powers on. It doesn't touch the
+  memory chip we are backing up. When it finishes, the scanner disconnects and
+  reconnects on its own; give it five seconds.</p>
+</section>
+
+<section id="step3" class="step" data-state="waiting">
+  <h2>3. Read the chip</h2>
+  <p>Click Read; Chrome shows the picker again (choose the Pakon, now
+  <code>0f05:f135</code>). Reading takes about ten seconds and uses the same two
+  requests the original Kodak software uses at every launch.</p>
+  <button id="readButton" class="primary">Read and verify</button>
+</section>
+
+<section id="results" hidden>
+  <h2>Result</h2>
+  <p>Kodak stores the data twice: two sections, each with a primary copy and a
+  backup copy, each protected by a checksum. Here is what your scanner holds:</p>
+  <table>
+    <thead><tr><th>Copy</th><th>Where</th><th>Bytes</th><th>Checksum</th><th>Notes</th></tr></thead>
+    <tbody id="resultsTable"></tbody>
+  </table>
+  <div id="summary"></div>
+  <h3>Files</h3>
+  <p>Keep all of them together. The <code>SHA256SUMS</code> file lets you (or
+  anyone) check later that they haven't been damaged.</p>
+  <div id="downloads"></div>
+</section>
+
+<p id="errorHint" class="error" hidden>Something went wrong. Turn the scanner off
+and on again, reload this page, and start from step 1. If it keeps happening,
+copy the log below when asking for help.</p>
+
+<h3>Log</h3>
+<pre id="log"></pre>
+
+</div>
+
+<section class="fineprint">
+<h2>What this page sends to your scanner, and what it doesn't</h2>
+<ul>
+  <li>To load the firmware: the standard Cypress FX2 memory-load requests
+  (<code>0xA0</code>, <code>0xA3</code>) with Kodak's own firmware image for
+  your scanner's revision, plus the loader's init (<code>0xA4</code> with value
+  <code>0xA1</code>). Every image is checked against a known SHA-256 before a byte
+  is sent.</li>
+  <li>To read the chip: <code>0xA4</code> with value <code>0x00A5</code> (select the
+  chip, read direction) then <code>0xA9</code> at increasing offsets, 32 bytes at
+  a time. This is the sequence Kodak's own engine (TLB.dll) issues at every
+  launch, taken from a capture of it.</li>
+  <li>Never: <code>0xA2</code> (the EEPROM write request), any other value on
+  <code>0xA4</code>, or any command to the scanner's motor and light controllers.
+  The page contains no code for any of those.</li>
+  <li>The page makes no network requests except loading its own files. Nothing
+  you read leaves your computer.</li>
+</ul>
+<p>Source, credits and the longer explanation of what is per-unit and why:
+<a href="https://github.com/alibosworth/pakon-eeprom-backup-web">github.com/alibosworth/pakon-eeprom-backup-web</a>
+and <a href="https://pakon-reference.alibosworth.com/per-unit-data-and-safety/">pakon-reference: per-unit data and safety</a>.</p>
+<p><strong>Windows:</strong> the Pakon driver claims the scanner, so Chrome can't
+reach it without swapping the driver (Zadig/WinUSB), which stops the Pakon
+software working until you swap back. If you have the Kodak software installed,
+its own copy of most of this data is in the registry under
+<code>HKLM\Software\Pakon\TLB\ColorKodak</code>; export that as a stop-gap.</p>
+<p><strong>Linux:</strong> works, but your user needs permission for the device
+(a udev rule for vendor <code>0f05</code>).</p>
+</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
