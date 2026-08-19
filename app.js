@@ -289,16 +289,22 @@ async function readSection(section) {
   return { ...section, bytes, length, storedCrc, computedCrc, plausible, crcOk, lengthOk, valid: crcOk && lengthOk };
 }
 
+// Section A payload, absolute offsets: 0x008 revision (the OEM shows it as "revision 400"),
+// 0x00C scanner type (the OEM's logs say "Scanner Type 1351" for an F-135+), 0x010 serial.
+const SCANNER_TYPE_NAMES = { 1351: "F-135+ (type 1351)" };
+
 function decodeSectionA(bytes) {
+  const revision = readU32(bytes, 0x08);
+  const scannerType = readU32(bytes, 0x0c);
   const serial = readU32(bytes, 0x10);
   const triples = [0x14, 0x1a, 0x20].map((offset) => [readU16(bytes, offset), readU16(bytes, offset + 2), readU16(bytes, offset + 4)]);
   const negDiagonal = [0x26, 0x26 + 11 * 4, 0x26 + 22 * 4].map((offset) => readF32(bytes, offset));
-  return { serial, triples, negDiagonal };
+  return { revision, scannerType, serial, triples, negDiagonal };
 }
 
 // ---------------------------------------------------------------- UI glue
 
-const results = { sections: [], serial: null };
+const results = { sections: [], serial: null, decoded: null };
 
 function setStep(stepNumber, state) {
   const step = document.getElementById(`step${stepNumber}`);
@@ -471,7 +477,9 @@ async function renderResults() {
   if (goodA) {
     const decoded = decodeSectionA(goodA.bytes);
     results.serial = decoded.serial;
-    parts.push(`<p>This is scanner <strong>serial ${decoded.serial}</strong>. Motor speeds per resolution base (offset / normal / IR):
+    results.decoded = decoded;
+    const typeName = SCANNER_TYPE_NAMES[decoded.scannerType] || `type ${decoded.scannerType}`;
+    parts.push(`<p>This is scanner <strong>serial ${decoded.serial}</strong>, ${typeName}, revision ${decoded.revision} (as the Kodak software shows it), USB firmware revision aa07. Motor speeds per resolution base (offset / normal / IR):
       base 4 = ${decoded.triples[0].join(" / ")}, base 8 = ${decoded.triples[1].join(" / ")}, base 16 = ${decoded.triples[2].join(" / ")}.
       Negative matrix diagonal ${decoded.negDiagonal.map((value) => value.toFixed(4)).join(", ")}.</p>`);
   }
@@ -536,6 +544,10 @@ function buildReadme(prefix) {
   const lines = [];
   lines.push(`Pakon F-135 / F-135+ per-unit EEPROM backup`);
   lines.push(`Scanner serial: ${results.serial === null ? "unknown (no section A verified)" : results.serial}`);
+  if (results.decoded) {
+    lines.push(`Scanner type: ${results.decoded.scannerType} (${SCANNER_TYPE_NAMES[results.decoded.scannerType] || "not yet mapped to a model name"})`);
+    lines.push(`Revision: ${results.decoded.revision} (as shown by the Kodak software); USB firmware revision aa07 (F-135 / F-135+)`);
+  }
   lines.push(`Read on: ${now.toISOString()}`);
   lines.push(`Read with: pakon-eeprom-backup-web (https://github.com/alibosworth/pakon-eeprom-backup-web), browser ${navigator.userAgent}`);
   lines.push("");
