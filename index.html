@@ -88,7 +88,7 @@ copy the log below when asking for help.</p>
   <li>To load the firmware (when you click the button in step 2): the standard Cypress FX2
   memory-load requests (<code>0xA0</code>, <code>0xA3</code>) carrying Kodak's own
   firmware image for your scanner's revision, plus the loader's init
-  (<code>0xA4</code> with value <code>0xA1</code>). The image's SHA-256 is checked
+  (<code>0xA4</code> with value <code>0xA1</code>). The firmware image's hash is checked
   before a byte is sent; the revision the loader reports must match the one
   the scanner announced on USB and must be the F-135's (<code>aa07</code>), or
   the page stops before sending Kodak's firmware. (By then the small generic
