@@ -87,12 +87,11 @@ in `app.js`.
   `SUBSYSTEM=="usb", ATTR{idVendor}=="0f05", TAG+="uaccess"` in
   `/etc/udev/rules.d/70-pakon.rules`, `sudo udevadm control --reload`,
   replug. (`uaccess` grants the logged-in seat, not every account.)
-- **Windows**: the Pakon driver owns the device. WebUSB needs the WinUSB
-  driver bound (Zadig), which stops the Pakon software working until you
-  swap back. Easier: run the page from a Mac or from a Linux live USB
-  booted on the same PC. The Kodak software's registry copy
-  (`HKLM\Software\Pakon\TLB\ColorKodak`) is not a substitute: decoded,
-  rounded, only the copy that validated, cannot be written back.
+- **Windows**: does not work; the Pakon driver owns the device and WebUSB
+  cannot open it. Use a Mac, or a Linux live USB booted on the same PC. The
+  Kodak software's registry copy (`HKLM\Software\Pakon\TLB\ColorKodak`) is
+  not a substitute: decoded, rounded, only the copy that validated, cannot be
+  written back.
 - **Safari, Firefox, iOS, Android**: no WebUSB.
 
 ## Running it locally

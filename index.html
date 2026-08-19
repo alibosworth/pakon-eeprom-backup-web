@@ -109,11 +109,10 @@ copy the log below when asking for help.</p>
   <li><strong>Mac</strong> with Chrome or Edge: works, nothing to install.</li>
   <li><strong>Linux</strong> with Chrome or Edge: works after you allow your user
   to open the scanner (the page shows the one-line rule when it detects Linux).</li>
-  <li><strong>Windows</strong>: not directly. The Pakon driver owns the scanner,
-  and letting Chrome at it means swapping that driver out (Zadig, WinUSB), which
-  breaks the Pakon software until you swap it back. Easiest is to run this page
-  from another machine: a Mac, or a Linux live USB booted on the same PC, with
-  Chrome. The Kodak software's own copy in the registry
+  <li><strong>Windows</strong>: this page does not work on Windows; the Pakon
+  driver keeps the scanner to itself. Use a Mac, or boot a Linux live USB on
+  the same PC and open this page in Chrome there; nothing gets installed either
+  way. The Kodak software's copy in the registry
   (<code>HKLM\Software\Pakon\TLB\ColorKodak</code>) is not a substitute: it is
   a decoded, rounded copy of whichever half of the chip was readable, and cannot
   be written back.</li>
@@ -146,6 +145,6 @@ exists.</p>
 <a href="https://github.com/alibosworth/pakon-eeprom-backup-web">github.com/alibosworth/pakon-eeprom-backup-web</a>.</p>
 </section>
 </main>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
