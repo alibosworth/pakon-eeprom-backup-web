@@ -45,3 +45,4 @@ a { color: var(--accent); }
 .notice.warn { border-left-color: var(--warn); }
 .muted { color: var(--muted); }
 .step[data-state="blocked"] { border-left-color: var(--bad); }
+.status { color: var(--ok); font-weight: 600; margin: .5rem 0 0; }

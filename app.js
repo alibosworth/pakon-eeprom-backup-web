@@ -156,7 +156,8 @@ let busy = false;
 
 function setBusy(state) {
   busy = state;
-  document.getElementById("connectButton").disabled = state;
+  const step1 = document.getElementById("step1").dataset.state;
+  document.getElementById("connectButton").disabled = state || step1 !== "ready";
   const step2 = document.getElementById("step2").dataset.state;
   const step3 = document.getElementById("step3").dataset.state;
   document.getElementById("loadButton").disabled = state || step2 !== "ready";
@@ -298,6 +299,7 @@ const results = { sections: [], serial: null };
 function setStep(stepNumber, state) {
   const step = document.getElementById(`step${stepNumber}`);
   step.dataset.state = state;
+  if (stepNumber === 1) document.getElementById("connectButton").disabled = state !== "ready";
   if (stepNumber === 2) document.getElementById("loadButton").disabled = state !== "ready";
   if (stepNumber === 3) document.getElementById("readButton").disabled = state !== "ready";
 }
@@ -328,6 +330,11 @@ async function onConnectClick() {
       { vendorId: VENDOR_ID, productId: PRODUCT_ID_LOADED },
     ]);
     setStep(1, "done");
+    const connected = document.getElementById("connected");
+    connected.textContent = device.productId === PRODUCT_ID_LOADED
+      ? `Connected: Pakon [0f05:f135], firmware already running.`
+      : `Connected: Unknown device [0f05:f235], the scanner before its firmware is loaded. Go to step 2.`;
+    connected.hidden = false;
     if (device.productId === PRODUCT_ID_LOADED) {
       log("The scanner already has its firmware running; step 2 is not needed.");
       setStep(2, "done");
@@ -372,9 +379,11 @@ async function onLoadClick() {
     // that state: close the handle, block step 2, and require a power-cycle.
     try { if (device) await device.close(); } catch (closeError) { /* ignore */ }
     device = null;
-    document.getElementById("detected").textContent = "The load did not complete. Turn the scanner off and on again (this clears its memory), reload this page, and start from step 1.";
+    document.getElementById("detected").textContent = "The load did not complete. Turn the scanner off and on again (this clears its memory), then start again from step 1.";
     setStep(2, "blocked");
     setStep(3, "waiting");
+    setStep(1, "ready");
+    document.getElementById("connected").hidden = true;
   } finally {
     setBusy(false);
   }
@@ -405,6 +414,8 @@ async function onReadClick() {
     try { if (device) await device.close(); } catch (closeError) { /* ignore */ }
     device = null;
     setStep(3, "blocked");
+    setStep(1, "ready");
+    document.getElementById("connected").hidden = true;
     log("Power-cycle the scanner and start again from step 1 before reading again.", "muted");
   } finally {
     setBusy(false);
