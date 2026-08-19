@@ -108,9 +108,10 @@ Any static server; WebUSB needs `https://` or `http://localhost`.
 ## Restoring
 
 This page cannot write, on purpose. If a chip ever has to be restored, that
-is an EEPROM write (`0xA2`) against the exact bytes in these files, section A
-from whichever copy verified; not something to do casually, and not something
-this page will grow to do.
+is an EEPROM write (`0xA2`) of the exact bytes in these files, each section
+from whichever of its two copies verified, written into both of that
+section's slots; not something to do casually, and not something this page
+will grow to do.
 
 ## Credits
 
