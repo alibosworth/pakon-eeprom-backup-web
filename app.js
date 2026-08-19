@@ -575,8 +575,13 @@ function buildReadme(prefix) {
   lines.push(`  This data belongs to one scanner only: the F-135 / F-135+ with serial ${results.serial === null ? "(see above)" : results.serial}.`);
   lines.push("  It must only ever be used to restore that exact scanner, same model, same serial number.");
   lines.push("  Written to any other unit it would give that unit the wrong motor speeds and colour correction.");
-  lines.push("  The personality-8-bytes-from-loader file (if present) is what the boot loader reports about");
-  lines.push("  itself; it is the same on every F-135 and is kept for the record only.");
+  if (bootPersonality) {
+    lines.push("  The personality-8-bytes-from-loader file is what the boot loader reported about itself in");
+    lines.push("  step 2; it is the same on every F-135 and is kept for the record only.");
+  } else {
+    lines.push("  No personality file this time: the scanner already had its firmware running, so step 2");
+    lines.push("  (where the loader reports it) was skipped. It is the same on every F-135 and not needed.");
+  }
   lines.push("  Files: " + prefix + "-*. Hashes in the SHA256SUMS file.");
   return lines.join("\n") + "\n";
 }
