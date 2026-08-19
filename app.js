@@ -297,7 +297,7 @@ async function readSection(section) {
 
 // Section A payload, absolute offsets: 0x008 revision (the OEM shows it as "revision 400"),
 // 0x00C scanner type (the OEM's logs say "Scanner Type 1351" for an F-135+), 0x010 serial.
-const SCANNER_TYPE_NAMES = { 1351: "F-135+ (type 1351)" };
+const SCANNER_TYPE_NAMES = { 1351: "F-135+" };
 
 function decodeSectionA(bytes) {
   const revision = readU32(bytes, 0x08);
@@ -494,7 +494,7 @@ async function renderResults() {
     const decoded = decodeSectionA(goodA.bytes);
     results.serial = decoded.serial;
     results.decoded = decoded;
-    const typeName = SCANNER_TYPE_NAMES[decoded.scannerType] || `type ${decoded.scannerType}`;
+    const typeName = SCANNER_TYPE_NAMES[decoded.scannerType] ? `${SCANNER_TYPE_NAMES[decoded.scannerType]} (type ${decoded.scannerType})` : `type ${decoded.scannerType}`;
     parts.push(`<p>This is scanner <strong>serial ${decoded.serial}</strong>, ${typeName}, revision ${decoded.revision} (as the Kodak software shows it), USB firmware revision aa07. Motor speeds per resolution base (offset / normal / IR):
       base 4 = ${decoded.triples[0].join(" / ")}, base 8 = ${decoded.triples[1].join(" / ")}, base 16 = ${decoded.triples[2].join(" / ")}.
       Negative matrix diagonal ${decoded.negDiagonal.map((value) => value.toFixed(4)).join(", ")}.</p>`);
