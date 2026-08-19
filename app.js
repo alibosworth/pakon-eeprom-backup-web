@@ -486,7 +486,7 @@ async function renderResults() {
   const allValid = primaryA.valid && backupA.valid && primaryB.valid && backupB.valid;
   const allFour = allValid && sameA && sameB;
   const completeDivergent = allValid && (!sameA || !sameB);
-  const overall = allFour ? "all four verified and identical" : completeDivergent ? "complete, one section's copies differ" : goodA && goodB ? "sufficient for recovery" : "incomplete";
+  const overall = allFour ? "all four verified and identical" : completeDivergent ? "complete, one or both sections' copies differ" : goodA && goodB ? "sufficient for recovery" : "incomplete";
   results.overall = overall;
   const summary = document.getElementById("summary");
   const parts = [];
@@ -509,7 +509,7 @@ async function renderResults() {
   parts.push(pairNote("A", primaryA, backupA));
   parts.push(pairNote("B", primaryB, backupB));
   if (allFour) parts.push("<p><strong>All four copies verified and each pair identical.</strong> Download the files below and keep them somewhere safe (two places is better than one).</p>");
-  else if (completeDivergent) parts.push("<p><strong>Complete, with a divergence:</strong> every copy passes its checksum, but one section's two copies differ (see above). Download the files below and keep them somewhere safe (two places is better than one).</p>");
+  else if (completeDivergent) parts.push("<p><strong>Complete, with a divergence:</strong> every copy passes its checksum, but in one or both sections the two copies differ (see above). Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else if (goodA && goodB) parts.push("<p><strong>Sufficient for recovery:</strong> at least one good copy of each section. Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else parts.push("<p><strong>Not a complete backup yet.</strong> Download what was read, then try again after a power-cycle.</p>");
   summary.innerHTML = parts.join("");
@@ -589,7 +589,7 @@ function buildReadme(prefix) {
   const backupB = sectionByName("sectionB_backup");
   lines.push("");
   lines.push(`Overall: ${results.overall || "not assessed"}`);
-  lines.push("  (all four verified and identical / complete, one section's copies differ /");
+  lines.push("  (all four verified and identical / complete, one or both sections' copies differ /");
   lines.push("   sufficient for recovery = at least one good copy of each section / incomplete)");
   lines.push("");
   lines.push("Which file to restore from, if that is ever needed");
