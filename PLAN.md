@@ -101,8 +101,13 @@ logic.
 3. Personality read: cold Load path ran; value not captured in the notes.
 4. Unplug mid-read: not yet tried.
 
-Two independent reviews (nine and six findings) applied before the
-hardware test; see git history.
+Four review rounds by an independent reviewer (Codex), all findings
+applied: nine (firmware identity, busy lock, exact lengths, short reads,
+per-pair verdicts, HEX validation, udev), six (F-135 only, no retry after a
+failed load, one read per power-on, bytesWritten, wording), two (divergent
+but valid copies, final-release error handling), one (completeness verdict
+order). The first two rounds preceded the hardware test, the last two
+followed it. Each fix is a named commit.
 
 ## Credits to carry in the README
 
