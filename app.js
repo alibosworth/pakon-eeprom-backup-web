@@ -336,7 +336,7 @@ async function onConnectClick() {
     setStep(1, "done");
     const connected = document.getElementById("connected");
     connected.textContent = device.productId === PRODUCT_ID_LOADED
-      ? `Connected: Pakon [0f05:f135], firmware already running.`
+      ? `Connected: F135-USB Film Scanner, firmware already running.`
       : `Connected: Unknown device [0f05:f235], the scanner before its firmware is loaded. Go to step 2.`;
     connected.hidden = false;
     if (device.productId === PRODUCT_ID_LOADED) {
@@ -383,7 +383,7 @@ async function onLoadClick() {
     detected.textContent = "Firmware loaded and the scanner has had time to reconnect. Go to step 3.";
     setStep(2, "done");
     setStep(3, "ready");
-    log("Step 2 done. Now click \"Read and verify\" in step 3 and choose Pakon [0f05:f135] in Chrome's picker. (Chrome cannot show the page the restarted scanner until you pick it again.)", "ok");
+    log("Step 2 done. Now click \"Read and verify\" in step 3 and choose 'F135-USB Film Scanner' in Chrome's picker. (Chrome cannot show the page the restarted scanner until you pick it again.)", "ok");
   } catch (error) {
     showError(error);
     // The scanner's RAM may now hold a partial load. Do not allow a retry against
