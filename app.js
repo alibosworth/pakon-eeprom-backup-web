@@ -18,11 +18,13 @@ const PRODUCT_ID_LOADED = 0xf135;  // application firmware running
 const FIRMWARE_BASE_URL = "./firmware/";
 const FIRMWARE_SHA256 = {
   "ezusb_stage2.ihex": "467d38b47f36be550fb2896e9b1da588798bcd12cbd507206aec5636d53770dc",
-  "Pakon5.hex": "6ea86ecf77e281cf0fbea0a94eea16ec9661bcc6ca265e69660e74a2b569f2da",
   "Pakon7.hex": "edd840680ef7714c5d93b89c3def5ed6ba3085166bc8e0a6a15a0390bef3f2b4",
-  "Pakon8.hex": "1f21fb0809a432ab1b4c4cf566be609a2eee9c156017018e645a8088aab70a67",
 };
-const REVISION_TO_FIRMWARE = { 0xaa05: "Pakon5.hex", 0xaa07: "Pakon7.hex", 0xaa08: "Pakon8.hex" };
+// Revision aa07 is the F-135 and F-135+ (they share one FX2 image). aa05 is the
+// F-235 and aa08 the F-335 (pakon-reference, usb-identity-and-firmware.md);
+// this page is for the 135 line only and refuses the others.
+const REVISION_TO_FIRMWARE = { 0xaa07: "Pakon7.hex" };
+const REVISION_FAMILY = { 0xaa05: "F-235", 0xaa07: "F-135 / F-135+", 0xaa08: "F-335" };
 // The 8-byte DEVICE_PERSONALITY the loader returns: id, VID (LE), PID (LE), revision (LE), one more byte.
 const PERSONALITY_ID = 0xc0;
 const PERSONALITY_LENGTH = 8;
@@ -158,7 +160,7 @@ function setBusy(state) {
   const step2 = document.getElementById("step2").dataset.state;
   const step3 = document.getElementById("step3").dataset.state;
   document.getElementById("loadButton").disabled = state || step2 !== "ready";
-  document.getElementById("readButton").disabled = state || (step3 !== "ready" && step3 !== "done");
+  document.getElementById("readButton").disabled = state || step3 !== "ready";
 }
 
 async function openDevice(candidate) {
@@ -179,6 +181,8 @@ async function controlOut(request, value, index, data) {
     data === undefined ? new Uint8Array(0) : data,
   );
   if (result.status !== "ok") throw new Error(`control OUT 0x${hex(request)} failed: ${result.status}`);
+  const expected = data === undefined ? 0 : data.byteLength;
+  if (result.bytesWritten !== expected) throw new Error(`control OUT 0x${hex(request)}: short write (${result.bytesWritten} of ${expected} bytes)`);
 }
 
 async function controlIn(request, value, index, length) {
@@ -232,17 +236,17 @@ async function loadFirmware() {
   const revision = readU16(personality, 5);
   log(`Boot personality (as reported by the loader): ${bytesToHex(personality)}  (revision 0x${hex(revision, 4)})`);
   if (personalityId !== PERSONALITY_ID || personalityVendor !== VENDOR_ID || personalityProduct !== PRODUCT_ID_COLD) {
-    throw new Error(`the scanner's personality does not look like a Pakon F-135 (id 0x${hex(personalityId)}, ${hex(personalityVendor, 4)}:${hex(personalityProduct, 4)}); stopping before loading any firmware`);
+    throw new Error(`the scanner's personality does not look like a Pakon (id 0x${hex(personalityId)}, ${hex(personalityVendor, 4)}:${hex(personalityProduct, 4)}); stopping before the Kodak firmware (the generic loader is already in RAM; power-cycle to clear it)`);
   }
   // Cross-check against the revision the cold device announced on USB (bcdDevice).
   const usbRevision = ((device.deviceVersionMajor & 0xff) << 8) | ((device.deviceVersionMinor & 0xf) << 4) | (device.deviceVersionSubminor & 0xf);
   if (usbRevision !== revision) {
-    throw new Error(`the loader reports revision 0x${hex(revision, 4)} but the scanner announced 0x${hex(usbRevision, 4)} on USB; the two must agree before any firmware is loaded. Power-cycle the scanner and try again`);
+    throw new Error(`the loader reports revision 0x${hex(revision, 4)} but the scanner announced 0x${hex(usbRevision, 4)} on USB; the two must agree before the Kodak firmware is sent. Power-cycle the scanner and start again`);
   }
   bootPersonality = personality.slice();
 
   const firmwareName = REVISION_TO_FIRMWARE[revision];
-  if (!firmwareName) throw new Error(`no F-135 application firmware is known for revision 0x${hex(revision, 4)}; stopping without loading anything`);
+  if (!firmwareName) throw new Error(`revision 0x${hex(revision, 4)} is not an F-135 / F-135+; stopping before the Kodak firmware (the generic loader is already in RAM; power-cycle to clear it)`);
   log(`Loading application firmware ${firmwareName}…`);
   const application = await fetchFirmware(firmwareName);
   await downloadRecords(application);
@@ -295,7 +299,7 @@ function setStep(stepNumber, state) {
   const step = document.getElementById(`step${stepNumber}`);
   step.dataset.state = state;
   if (stepNumber === 2) document.getElementById("loadButton").disabled = state !== "ready";
-  if (stepNumber === 3) document.getElementById("readButton").disabled = state !== "ready" && state !== "done";
+  if (stepNumber === 3) document.getElementById("readButton").disabled = state !== "ready";
 }
 
 function showError(error) {
@@ -337,7 +341,10 @@ async function onConnectClick() {
       detected.textContent = `Detected a cold F-135-family scanner, revision 0x${hex(usbRevision, 4)}. Its original firmware for this revision is ${pendingFirmwareName}; click below to send it.`;
       setStep(2, "ready");
     } else {
-      detected.textContent = `This scanner announces revision 0x${hex(usbRevision, 4)}, which is not one this page knows firmware for (F-135 revisions are aa05, aa07, aa08). Stopping here.`;
+      const family = REVISION_FAMILY[usbRevision];
+      detected.textContent = family
+        ? `This scanner announces revision 0x${hex(usbRevision, 4)}, which is an ${family}. This page only handles the F-135 and F-135+ (revision aa07); stopping here without sending anything.`
+        : `This scanner announces revision 0x${hex(usbRevision, 4)}, which this page does not recognise. It handles the F-135 and F-135+ (revision aa07) only; stopping here without sending anything.`;
       setStep(2, "blocked");
     }
   } catch (error) {
@@ -361,7 +368,13 @@ async function onLoadClick() {
     setStep(3, "ready");
   } catch (error) {
     showError(error);
-    setStep(2, "ready");
+    // The scanner's RAM may now hold a partial load. Do not allow a retry against
+    // that state: close the handle, block step 2, and require a power-cycle.
+    try { if (device) await device.close(); } catch (closeError) { /* ignore */ }
+    device = null;
+    document.getElementById("detected").textContent = "The load did not complete. Turn the scanner off and on again (this clears its memory), reload this page, and start from step 1.";
+    setStep(2, "blocked");
+    setStep(3, "waiting");
   } finally {
     setBusy(false);
   }
@@ -384,12 +397,15 @@ async function onReadClick() {
       const verdict = read.valid ? "CRC ok" : read.crcOk ? `CRC ok but unexpected length (expected ${read.expectedLength})` : read.plausible ? "CRC MISMATCH" : "no valid header";
       log(`  ${read.name.padEnd(17)} @0x${hex(read.base, 3)}  ${read.length} bytes  ${verdict}`, read.valid ? "ok" : "warn");
     }
-    renderResults();
+    await renderResults();
     setStep(3, "done");
-    log("Done. Nothing was written to the scanner.", "ok");
+    log("Done. Nothing was written to the scanner. To read again, power-cycle the scanner first and start from step 1 (one read per power-on; see the note under Result).", "ok");
   } catch (error) {
     showError(error);
-    setStep(3, "ready");
+    try { if (device) await device.close(); } catch (closeError) { /* ignore */ }
+    device = null;
+    setStep(3, "blocked");
+    log("Power-cycle the scanner and start again from step 1 before reading again.", "muted");
   } finally {
     setBusy(false);
   }
@@ -399,7 +415,7 @@ function sectionByName(name) {
   return results.sections.find((section) => section.name === name);
 }
 
-function renderResults() {
+async function renderResults() {
   const table = document.getElementById("resultsTable");
   const rows = [];
   for (const section of results.sections) {
@@ -449,7 +465,7 @@ function renderResults() {
   else if (goodA && goodB) parts.push("<p><strong>Sufficient for recovery:</strong> at least one good copy of each section. Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else parts.push("<p><strong>Not a complete backup yet.</strong> Download what was read, then try again after a power-cycle.</p>");
   summary.innerHTML = parts.join("");
-  renderDownloads();
+  await renderDownloads();
   document.getElementById("results").hidden = false;
 }
 

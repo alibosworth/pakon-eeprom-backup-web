@@ -23,7 +23,9 @@ writes to the scanner's chips.</p>
 <section id="step1" class="step" data-state="ready">
   <h2>1. Plug in and power on the scanner, then connect</h2>
   <p>Turn the scanner on, wait for the lights to settle, then click Connect.
-  Chrome will show a small window listing USB devices; choose the Pakon.</p>
+  Chrome will show a small window listing USB devices; choose the Pakon. This
+  page is for the F-135 and F-135+; it will recognise an F-235 or F-335 and
+  stop.</p>
   <button id="connectButton" class="primary">Connect to the scanner</button>
 </section>
 
@@ -51,6 +53,9 @@ writes to the scanner's chips.</p>
   <h2>Result</h2>
   <p>Kodak stores the data twice: two sections, each with a primary copy and a
   backup copy, each protected by a checksum. Here is what your scanner holds:</p>
+  <p class="muted">One read per power-on: to read again (a good idea, to confirm),
+  turn the scanner off and on and repeat steps 1–3; the files should come out
+  byte-identical.</p>
   <table>
     <thead><tr><th>Copy</th><th>Where</th><th>Bytes</th><th>Checksum</th><th>Notes</th></tr></thead>
     <tbody id="resultsTable"></tbody>
@@ -81,8 +86,11 @@ copy the log below when asking for help.</p>
   memory-load requests (<code>0xA0</code>, <code>0xA3</code>) carrying Kodak's own
   firmware image for your scanner's revision, plus the loader's init
   (<code>0xA4</code> with value <code>0xA1</code>). The image's SHA-256 is checked
-  before a byte is sent, and the revision the loader reports must match the one
-  the scanner announced on USB or the page stops.</li>
+  before a byte is sent; the revision the loader reports must match the one
+  the scanner announced on USB and must be the F-135's (<code>aa07</code>), or
+  the page stops before sending Kodak's firmware. (By then the small generic
+  Cypress loader is already in the scanner's working memory; that is harmless,
+  and switching the scanner off clears it.)</li>
   <li>To read the chip (step 3): <code>0xA4</code> with value <code>0x00A5</code>
   (select the chip, read direction) then <code>0xA9</code> at increasing offsets,
   32 bytes at a time. This is the sequence Kodak's own engine (TLB.dll) issues at

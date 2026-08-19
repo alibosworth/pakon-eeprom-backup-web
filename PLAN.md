@@ -16,9 +16,9 @@ someone who has never opened a terminal.
    - write the generic Cypress second-stage loader (`0xA0`, internal RAM)
    - release the 8051 (value 0), send init `0xA4 wValue 0xA1`
    - read the 8-byte personality (`0xA9`, `wValue 0`, `wIndex 0`): this
-     gives the revision (`aa05`/`aa07`/`aa08`) that selects
-     `Pakon5/7/8.hex`, exactly as the OEM's DownloadFirmware does; the 8
-     bytes are also kept as the boot-personality backup
+     gives the revision, which must be `aa07` (F-135 / F-135+; `aa05` is the
+     F-235 and `aa08` the F-335, refused) and must equal the USB bcdDevice;
+     the 8 bytes are kept as the loader's descriptor
    - write the application firmware: external pass (`0xA3`, CPU running),
      then hold the 8051 and write the internal pass (`0xA0`), then release
    - the scanner drops off the bus and re-enumerates as `0f05:f135`
@@ -60,7 +60,7 @@ app.js            WebUSB, Intel HEX parser, loader, reader, CRC-32, downloads
 style.css
 firmware/
   ezusb_stage2.ihex   generic Cypress EZ-USB second-stage RAM loader (not Kodak's)
-  Pakon5.hex Pakon7.hex Pakon8.hex   Kodak's application firmware, one per revision
+  Pakon7.hex          Kodak's F-135 / F-135+ application firmware (aa07)
   SHA256SUMS
 README.md         what, why, safety, hosting the firmware, credits, licence
 PLAN.md           this file

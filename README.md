@@ -32,8 +32,10 @@ browser, is the answer to "can you do a tutorial".
    at power-off; this is not an EEPROM write. Before sending: the image's
    SHA-256 must match, the loader's 8-byte personality must carry the
    expected id/VID/PID, and the revision it reports must equal the one the
-   scanner announced on USB (bcdDevice); any disagreement stops the page
-   without loading anything.
+   scanner announced on USB (bcdDevice), and it must be `aa07` (an F-135 /
+   F-135+); any disagreement stops the page before the Kodak firmware is
+   sent. By then the generic Cypress loader is already in RAM; that is
+   harmless and a power-cycle clears it.
 3. Read the calibration EEPROM with the OEM engine's own two requests
    (`0xA4 wValue 0x00A5 wIndex 0x1234` select, then `0xA9` at byte offsets),
    both copies of both sections. Verify all four CRC-32s and the expected
@@ -44,15 +46,25 @@ browser, is the answer to "can you do a tutorial".
    it is the same on every F-135.
 4. Download the files, named with the serial and date, plus a `SHA256SUMS`.
 
+One read per power-on: after a read (or a failed one) the Read button stays
+off until the scanner is power-cycled and steps 1–3 are repeated. One unit
+has been reported to return degraded data on repeated reads within a
+power cycle while still reporting success; the CRCs would catch that, but
+the confirming read should be a fresh one. Compare the two runs' files;
+they should be byte-identical.
+
 Every USB request the code can issue is listed at the top of `app.js`; there
 is no `0xA2` (EEPROM write) and no bulk transfer anywhere in it.
 
 ## Firmware files, and why they are here
 
-`firmware/Pakon5.hex`, `Pakon7.hex`, `Pakon8.hex` are Kodak's application
-firmware for the three F-135 revisions, taken from the `FX35Driver/` folder
-of an unmodified install of the Pakon F-X35 software (the same installer
-the community mirrors). The OEM install tree also carries a different build
+`firmware/Pakon7.hex` is Kodak's application firmware for the F-135 and
+F-135+ (FX2 personality revision `aa07`; the two models share one image),
+taken from the `FX35Driver/` folder of an unmodified install of the Pakon
+F-X35 software (the same installer the community mirrors). The F-235
+(`aa05`, `Pakon5.hex`) and F-335 (`aa08`, `Pakon8.hex`) are different
+scanners with different warm USB identities; this page refuses them rather
+than half-supporting them, and does not host their images. The OEM install tree also carries a different build
 of `Pakon7.hex` under `F-135/F135Driver/` (10 326-byte image versus 10 355);
 the one here is the `FX35Driver/` build, which is byte-identical to the
 file pakon-tlx-macos loaded onto F-135+ serial 16402 on 18 August 2026, so
@@ -62,7 +74,7 @@ years, and hosting them with a pinned hash is safer than fetching them from
 somewhere at run time. If Kodak (or its successor in interest) objects,
 they will be removed on request. `firmware/ezusb_stage2.ihex` is the generic
 Cypress EZ-USB second-stage RAM loader from the Cypress development kit, not
-Kodak code. `firmware/SHA256SUMS` lists all four; the same values are
+Kodak code. `firmware/SHA256SUMS` lists both; the same values are
 compiled into `app.js` and checked before any byte reaches the scanner.
 
 To point the page at a different firmware host, change `FIRMWARE_BASE_URL`
@@ -114,5 +126,5 @@ this page will grow to do.
 
 ## Licence
 
-Code and text: MIT. `firmware/Pakon*.hex`: Kodak's, see above.
+Code and text: MIT. `firmware/Pakon7.hex`: Kodak's, see above.
 `firmware/ezusb_stage2.ihex`: Cypress's, from the EZ-USB development kit.
