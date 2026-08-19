@@ -567,7 +567,7 @@ function buildReadme(prefix) {
     lines.push(`Revision: ${results.decoded.revision} (as shown by the Kodak software); USB firmware revision aa07 (F-135 / F-135+)`);
   }
   lines.push(`Read on: ${now.toISOString()}`);
-  lines.push(`Read with: pakon-eeprom-backup-web (https://github.com/alibosworth/pakon-eeprom-backup-web), browser ${navigator.userAgent}`);
+  lines.push(`Read with: pakon-eeprom-backup-web, https://alibosworth.github.io/pakon-eeprom-backup-web/ (source: https://github.com/alibosworth/pakon-eeprom-backup-web), browser ${navigator.userAgent}`);
   lines.push("");
   lines.push("What this is");
   lines.push("  The calibration EEPROM (I2C chip 0x52) of one scanner: serial number, per-resolution");
