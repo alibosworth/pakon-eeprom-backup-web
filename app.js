@@ -257,7 +257,11 @@ async function loadFirmware() {
   } catch (error) {
     // The scanner drops off the bus as the application starts; that is expected.
   }
-  log("Firmware started. The scanner will now reconnect as 0f05:f135; this takes a few seconds.", "ok");
+  log("Firmware sent and started. The scanner is now restarting itself with it; this takes about five seconds.", "ok");
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 // ------------------------------------------------------------- EEPROM read
@@ -371,8 +375,15 @@ async function onLoadClick() {
     await loadFirmware();
     try { await device.close(); } catch (error) { /* already gone */ }
     device = null;
+    const detected = document.getElementById("detected");
+    for (let secondsLeft = 5; secondsLeft > 0; secondsLeft--) {
+      detected.textContent = `Firmware loaded. Waiting ${secondsLeft} s for the scanner to reconnect…`;
+      await sleep(1000);
+    }
+    detected.textContent = "Firmware loaded and the scanner has had time to reconnect. Go to step 3.";
     setStep(2, "done");
     setStep(3, "ready");
+    log("Step 2 done. Now click \"Read and verify\" in step 3 and choose Pakon [0f05:f135] in Chrome's picker. (Chrome cannot show the page the restarted scanner until you pick it again.)", "ok");
   } catch (error) {
     showError(error);
     // The scanner's RAM may now hold a partial load. Do not allow a retry against
