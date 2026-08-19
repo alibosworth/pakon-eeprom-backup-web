@@ -491,6 +491,46 @@ async function renderResults() {
   document.getElementById("results").hidden = false;
 }
 
+// A stored (uncompressed) zip: local file headers, central directory, end record.
+// Enough for a handful of small files; no library needed.
+function buildZip(files) {
+  const encoder = new TextEncoder();
+  const now = new Date();
+  const dosTime = ((now.getHours() & 0x1f) << 11) | ((now.getMinutes() & 0x3f) << 5) | ((now.getSeconds() >> 1) & 0x1f);
+  const dosDate = (((now.getFullYear() - 1980) & 0x7f) << 9) | (((now.getMonth() + 1) & 0xf) << 5) | (now.getDate() & 0x1f);
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  const u16 = (value) => [value & 0xff, (value >>> 8) & 0xff];
+  const u32 = (value) => [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const crc = crc32(file.bytes);
+    const local = new Uint8Array([
+      ...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(0), ...u16(dosTime), ...u16(dosDate),
+      ...u32(crc), ...u32(file.bytes.length), ...u32(file.bytes.length), ...u16(nameBytes.length), ...u16(0),
+      ...nameBytes,
+    ]);
+    localParts.push(local, file.bytes);
+    centralParts.push(new Uint8Array([
+      ...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(0), ...u16(dosTime), ...u16(dosDate),
+      ...u32(crc), ...u32(file.bytes.length), ...u32(file.bytes.length), ...u16(nameBytes.length), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0), ...u32(0), ...u32(offset),
+      ...nameBytes,
+    ]));
+    offset += local.length + file.bytes.length;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = new Uint8Array([
+    ...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0),
+  ]);
+  const total = offset + centralSize + end.length;
+  const zip = new Uint8Array(total);
+  let position = 0;
+  for (const part of [...localParts, ...centralParts, end]) { zip.set(part, position); position += part.length; }
+  return zip;
+}
+
 function download(name, bytes) {
   const blob = new Blob([bytes], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
@@ -522,16 +562,16 @@ async function renderDownloads() {
     button.addEventListener("click", () => download(file.name, file.bytes));
     container.appendChild(button);
   }
-  const all = document.createElement("button");
-  all.className = "primary";
-  all.textContent = "Download all files";
-  all.addEventListener("click", async () => {
-    for (const file of files) {
-      download(file.name, file.bytes);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-  });
-  container.prepend(all);
+  const zipName = `${prefix}.zip`;
+  const zipButton = document.createElement("button");
+  zipButton.className = "primary";
+  zipButton.textContent = `Download everything as ${zipName}`;
+  zipButton.addEventListener("click", () => download(zipName, buildZip(files)));
+  const separately = document.createElement("p");
+  separately.className = "muted";
+  separately.textContent = "Or the files one at a time:";
+  container.prepend(separately);
+  container.prepend(zipButton);
 }
 
 function describePlatform() {
