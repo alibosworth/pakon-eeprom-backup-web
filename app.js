@@ -658,12 +658,13 @@ function showPlatformNotice() {
   const notice = document.getElementById("platformNotice");
   const info = describePlatform();
   let html = "";
+  const localTools = ' If you would rather not use a browser at all, two projects have command-line tools that read the same chip the same way: <a href="https://github.com/pablonavarrob/pakon-tlx-macos">pakon-tlx-macos</a> (<code>tools/eedump.py</code>) and <a href="https://github.com/gazzdingo/pakon-mac">pakon-mac</a> (<code>tools/eeprom_backup.py</code>); see the notes at the bottom of this page.';
   if (!info.hasWebUsb) {
-    if (info.isMobile) html = "<strong>Phones and tablets can't do this.</strong> Use a Mac or Linux computer with Chrome or Edge.";
-    else if (info.isFirefox || info.isSafari) html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge; Safari and Firefox don't support WebUSB.";
-    else html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge.";
+    if (info.isMobile) html = "<strong>Phones and tablets can't do this.</strong> Use a Mac or Linux computer with Chrome or Edge." + localTools;
+    else if (info.isFirefox || info.isSafari) html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge; Safari and Firefox don't support WebUSB." + localTools;
+    else html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge." + localTools;
   } else if (info.isWindows) {
-    html = "<strong>Windows: this page will most likely not see your scanner.</strong> The Pakon driver keeps the scanner to itself, and giving Chrome access means replacing that driver, which stops the Pakon software working until you put it back. If you have the Kodak software installed, use its own copy instead: export the registry key <code>HKLM\\Software\\Pakon\\TLB\\ColorKodak</code> (Regedit, right-click, Export) and keep that file. It is not the raw chip, but it is most of the data.";
+    html = "<strong>Windows: this page will most likely not see your scanner.</strong> The Pakon driver keeps the scanner to itself, and giving Chrome access means replacing that driver, which stops the Pakon software working until you put it back. If you have the Kodak software installed, use its own copy instead: export the registry key <code>HKLM\\Software\\Pakon\\TLB\\ColorKodak</code> (Regedit, right-click, Export) and keep that file. It is not the raw chip, but it is most of the data." + localTools;
   } else if (info.isLinux) {
     html = "<strong>Linux: one thing to do first.</strong> Your user needs permission to open the scanner. Create <code>/etc/udev/rules.d/70-pakon.rules</code> containing <code>SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0f05\", TAG+=\"uaccess\"</code>, run <code>sudo udevadm control --reload</code>, then unplug and replug the scanner.";
   } else if (info.isMac) {
