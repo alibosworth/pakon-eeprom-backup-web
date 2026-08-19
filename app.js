@@ -477,8 +477,8 @@ async function renderResults() {
   }
   const pairNote = (label, primary, backup) => {
     if (primary.valid && backup.valid) return `<p>Section ${label}: both copies good.</p>`;
-    if (!primary.valid && backup.valid) return `<p><strong>Section ${label}: the primary copy is bad and the backup copy is good.</strong> This is common on these scanners (both units checked before this one were like this); the Kodak software quietly uses the backup copy and the scanner works normally. Nothing needs fixing; leave the scanner as it is and keep these files. If the chip ever has to be restored, use the <em>backup</em> file for section ${label}.</p>`;
-    if (primary.valid && !backup.valid) return `<p><strong>Section ${label}: the primary copy is good and the backup copy is bad.</strong> The scanner works normally from the primary. Nothing needs fixing; keep both files. If the chip ever has to be restored, use the <em>primary</em> file for section ${label}.</p>`;
+    if (!primary.valid && backup.valid) return `<p><strong>Section ${label}: the primary copy is bad and the backup copy is good.</strong> This is common on these scanners (both units checked before this one were like this); the Kodak software quietly uses the backup copy and the scanner works normally. Nothing needs fixing; leave the scanner as it is and keep these files. (If the chip ever has to be restored, don't copy the files back one for one: the primary file contains the damaged byte and would put the fault back. Write the <em>backup</em> file's bytes into both the primary and the backup slot for section ${label}.)</p>`;
+    if (primary.valid && !backup.valid) return `<p><strong>Section ${label}: the primary copy is good and the backup copy is bad.</strong> The scanner works normally from the primary. Nothing needs fixing; keep both files. (If the chip ever has to be restored, don't copy the files back one for one: the backup file contains the damage. Write the <em>primary</em> file's bytes into both slots for section ${label}.)</p>`;
     return `<p><strong>Section ${label}: neither copy verified.</strong> Keep the files anyway, power-cycle the scanner and read again; if it repeats, the chip may be failing and these files are what you have.</p>`;
   };
   parts.push(pairNote("A", primaryA, backupA));
@@ -560,9 +560,9 @@ function buildReadme(prefix) {
   lines.push("");
   lines.push("Which file to restore from, if that is ever needed");
   const advise = (label, primary, backup) => {
-    if (primary.valid && backup.valid) return `  Section ${label}: both copies good; either file.`;
-    if (!primary.valid && backup.valid) return `  Section ${label}: primary is bad, backup is good; use the BACKUP file.`;
-    if (primary.valid && !backup.valid) return `  Section ${label}: primary is good, backup is bad; use the PRIMARY file.`;
+    if (primary.valid && backup.valid) return `  Section ${label}: both copies good; either file, into both slots.`;
+    if (!primary.valid && backup.valid) return `  Section ${label}: primary is bad, backup is good. Do NOT copy the files back one for one (that would put the fault back); write the BACKUP file's bytes into both the primary and the backup slot.`;
+    if (primary.valid && !backup.valid) return `  Section ${label}: primary is good, backup is bad. Do NOT copy the files back one for one; write the PRIMARY file's bytes into both slots.`;
     return `  Section ${label}: neither copy verified; read again after a power-cycle.`;
   };
   lines.push(advise("A", primaryA, backupA));
