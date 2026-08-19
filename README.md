@@ -88,10 +88,7 @@ in `app.js`.
   `/etc/udev/rules.d/70-pakon.rules`, `sudo udevadm control --reload`,
   replug. (`uaccess` grants the logged-in seat, not every account.)
 - **Windows**: does not work; the Pakon driver owns the device and WebUSB
-  cannot open it. Use a Mac, or a Linux live USB booted on the same PC. The
-  Kodak software's registry copy (`HKLM\Software\Pakon\TLB\ColorKodak`) is
-  not a substitute: decoded, rounded, only the copy that validated, cannot be
-  written back.
+  cannot open it. Use a Mac, or a Linux live USB booted on the same PC.
 - **Safari, Firefox, iOS, Android**: no WebUSB.
 
 ## Running it locally

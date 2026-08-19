@@ -664,7 +664,7 @@ function showPlatformNotice() {
     else if (info.isFirefox || info.isSafari) html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge; Safari and Firefox don't support WebUSB." + localTools;
     else html = "<strong>This browser can't talk to USB devices.</strong> Open this page in Chrome or Edge." + localTools;
   } else if (info.isWindows) {
-    html = "<strong>Windows: this page does not work here.</strong> The Pakon driver keeps the scanner to itself. Use a Mac, or boot a Linux live USB on this PC and open this page in Chrome there; nothing gets installed either way. (The Kodak software's copy in the registry is not a real backup: it is a decoded, rounded copy that cannot be written back.)" + localTools;
+    html = "<strong>Windows: this page does not work here.</strong> The Pakon driver keeps the scanner to itself. Use a Mac, or boot a Linux live USB on this PC and open this page in Chrome there; nothing gets installed either way." + localTools;
   } else if (info.isLinux) {
     html = "<strong>Linux: one thing to do first.</strong> Your user needs permission to open the scanner. Create <code>/etc/udev/rules.d/70-pakon.rules</code> containing <code>SUBSYSTEM==\"usb\", ATTR{idVendor}==\"0f05\", TAG+=\"uaccess\"</code>, run <code>sudo udevadm control --reload</code>, then unplug and replug the scanner.";
   } else if (info.isMac) {
