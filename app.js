@@ -259,7 +259,7 @@ async function loadFirmware() {
   try {
     await controlOut(REQUEST_LOAD_INTERNAL, CPUCS_FX2, 0, new Uint8Array([0]));
   } catch (error) {
-    const looksLikeDisconnect = /disconnect|not found|no device|unavailable|NetworkError|removed|invalid state/i.test(`${error.name} ${error.message}`);
+    const looksLikeDisconnect = error.name === "NetworkError" || error.name === "NotFoundError" || /disconnected|device (was )?(removed|unavailable|not found)|no device/i.test(error.message);
     if (!looksLikeDisconnect) throw error;
     log(`  (scanner dropped off the bus as the firmware started: ${error.message})`, "muted");
   }
@@ -310,7 +310,7 @@ function decodeSectionA(bytes) {
 
 // ---------------------------------------------------------------- UI glue
 
-const results = { sections: [], serial: null, decoded: null };
+const results = { sections: [], serial: null, decoded: null, overall: null };
 
 function setStep(stepNumber, state) {
   const step = document.getElementById(`step${stepNumber}`);
@@ -483,8 +483,11 @@ async function renderResults() {
   const goodB = primaryB.valid ? primaryB : backupB.valid ? backupB : null;
   const sameA = sameBytes(primaryA.bytes, backupA.bytes);
   const sameB = sameBytes(primaryB.bytes, backupB.bytes);
-  const allFour = primaryA.valid && backupA.valid && primaryB.valid && backupB.valid && sameA && sameB;
-  const divergent = (primaryA.valid && backupA.valid && !sameA) || (primaryB.valid && backupB.valid && !sameB);
+  const allValid = primaryA.valid && backupA.valid && primaryB.valid && backupB.valid;
+  const allFour = allValid && sameA && sameB;
+  const completeDivergent = allValid && (!sameA || !sameB);
+  const overall = allFour ? "all four verified and identical" : completeDivergent ? "complete, one section's copies differ" : goodA && goodB ? "sufficient for recovery" : "incomplete";
+  results.overall = overall;
   const summary = document.getElementById("summary");
   const parts = [];
   if (goodA) {
@@ -506,7 +509,7 @@ async function renderResults() {
   parts.push(pairNote("A", primaryA, backupA));
   parts.push(pairNote("B", primaryB, backupB));
   if (allFour) parts.push("<p><strong>All four copies verified and each pair identical.</strong> Download the files below and keep them somewhere safe (two places is better than one).</p>");
-  else if (divergent) parts.push("<p><strong>Complete, with a divergence:</strong> every copy passes its checksum, but one section's two copies differ (see above). Download the files below and keep them somewhere safe (two places is better than one).</p>");
+  else if (completeDivergent) parts.push("<p><strong>Complete, with a divergence:</strong> every copy passes its checksum, but one section's two copies differ (see above). Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else if (goodA && goodB) parts.push("<p><strong>Sufficient for recovery:</strong> at least one good copy of each section. Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else parts.push("<p><strong>Not a complete backup yet.</strong> Download what was read, then try again after a power-cycle.</p>");
   summary.innerHTML = parts.join("");
@@ -584,6 +587,10 @@ function buildReadme(prefix) {
   const backupA = sectionByName("sectionA_backup");
   const primaryB = sectionByName("sectionB_primary");
   const backupB = sectionByName("sectionB_backup");
+  lines.push("");
+  lines.push(`Overall: ${results.overall || "not assessed"}`);
+  lines.push("  (all four verified and identical / complete, one section's copies differ /");
+  lines.push("   sufficient for recovery = at least one good copy of each section / incomplete)");
   lines.push("");
   lines.push("Which file to restore from, if that is ever needed");
   const advise = (label, primary, backup) => {
