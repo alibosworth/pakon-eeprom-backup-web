@@ -89,11 +89,10 @@ in `app.js`.
   replug. (`uaccess` grants the logged-in seat, not every account.)
 - **Windows**: the Pakon driver owns the device. WebUSB needs the WinUSB
   driver bound (Zadig), which stops the Pakon software working until you
-  swap back. If you have the Kodak software installed, its own copy of most
-  of this data is in the registry (`HKLM\Software\Pakon\TLB\ColorKodak`
-  and the `Wow6432Node` twin); export that as a stop-gap. It is the OEM's
-  decoded copy, not the raw bytes, and it does not tell you whether the
-  chip is healthy.
+  swap back. Easier: run the page from a Mac or from a Linux live USB
+  booted on the same PC. The Kodak software's registry copy
+  (`HKLM\Software\Pakon\TLB\ColorKodak`) is not a substitute: decoded,
+  rounded, only the copy that validated, cannot be written back.
 - **Safari, Firefox, iOS, Android**: no WebUSB.
 
 ## Running it locally
