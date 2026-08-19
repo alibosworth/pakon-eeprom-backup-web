@@ -477,7 +477,7 @@ async function renderResults() {
   }
   const pairNote = (label, primary, backup) => {
     if (primary.valid && backup.valid) return `<p>Section ${label}: both copies good.</p>`;
-    if (!primary.valid && backup.valid) return `<p><strong>Section ${label}: the primary copy is bad and the backup copy is good.</strong> This is common on these scanners (both units checked before this one were like this); the Kodak software quietly uses the backup copy and the scanner works normally. Nothing needs fixing; leave the scanner as it is and keep these files. (If the chip ever has to be restored, don't copy the files back one for one: the primary file contains the damaged byte and would put the fault back. Write the <em>backup</em> file's bytes into both the primary and the backup slot for section ${label}.)</p>`;
+    if (!primary.valid && backup.valid) return `<p><strong>Section ${label}: the primary copy is bad and the backup copy is good.</strong> This appears common on these scanners (both units checked before this one were like this); the Kodak software quietly uses the backup copy and the scanner works normally. Nothing needs fixing; leave the scanner as it is and keep these files. (If the chip ever has to be restored, don't copy the files back one for one: the primary file contains the damaged byte and would put the fault back. Write the <em>backup</em> file's bytes into both the primary and the backup slot for section ${label}.)</p>`;
     if (primary.valid && !backup.valid) return `<p><strong>Section ${label}: the primary copy is good and the backup copy is bad.</strong> The scanner works normally from the primary. Nothing needs fixing; keep both files. (If the chip ever has to be restored, don't copy the files back one for one: the backup file contains the damage. Write the <em>primary</em> file's bytes into both slots for section ${label}.)</p>`;
     return `<p><strong>Section ${label}: neither copy verified.</strong> Keep the files anyway, power-cycle the scanner and read again; if it repeats, the chip may be failing and these files are what you have.</p>`;
   };
@@ -569,7 +569,7 @@ function buildReadme(prefix) {
   lines.push(advise("B", primaryB, backupB));
   lines.push("");
   lines.push("Notes");
-  lines.push("  A bad primary with a good backup is common on these scanners; the Kodak software uses the");
+  lines.push("  A bad primary with a good backup appears common on these scanners; the Kodak software uses the");
   lines.push("  backup silently and the scanner works normally. Nothing needs fixing. Restoring means an");
   lines.push("  EEPROM write, which this tool does not do; only do that with the exact bytes of the good copy.");
   lines.push("  This data is unique to this scanner. Do not write it to any other unit.");
