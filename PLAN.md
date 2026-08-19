@@ -10,8 +10,11 @@ someone who has never opened a terminal.
    `0f05:f235` (scanner just powered on, no firmware) or `0f05:f135`
    (already loaded by something else). Chrome shows its own picker; the
    user chooses the scanner.
-2. **Load firmware (only if cold).** The standard Cypress FX2 RAM load
-   that every client and the OEM perform after every power-on:
+2. **Load firmware (only if cold, and only on a second click).** After
+   Connect the page shows the revision it detected and which image that
+   means; the user clicks "Load the scanner's original firmware". The load
+   is the standard Cypress FX2 RAM load that every client and the OEM
+   perform after every power-on:
    - hold the 8051 (`0xA0` to CPUCS `0x7F92` and `0xE600`, value 1)
    - write the generic Cypress second-stage loader (`0xA0`, internal RAM)
    - release the 8051 (value 0), send init `0xA4 wValue 0xA1`
@@ -32,14 +35,17 @@ someone who has never opened a terminal.
    time, re-selecting before each chunk. Both copies of both sections:
    A at 0x000 and 0x400, B at 0x800 and 0xA00, each `{u32 len; u32 crc32;
    payload}`.
-5. **Verify.** CRC-32 (zlib) over each payload against its header; compare
-   primary with backup; decode and show the serial number and the
-   per-resolution words so the user can see it is their unit.
-6. **Save.** Download buttons for the four section files, the personality,
-   and a `SHA256SUMS`, named with the serial and the date. Plain
-   language beside every result: which copies are good, what to keep, and
-   that a bad primary with a good backup is normal and not a reason to
-   write anything.
+5. **Verify.** CRC-32 (zlib) over each payload against its header and the
+   expected length (398 / 36); compare primary with backup; decode and show
+   the serial number, scanner type (0x00C, 1351 = F-135+), revision (0x008,
+   400, as the OEM shows it) and the per-resolution words so the user can
+   see it is their unit. One read per power-on: Read disables afterwards.
+6. **Save.** One zip (built in the page, stored) holding the four section
+   files, the loader's 8-byte personality if step 2 ran, a `SHA256SUMS`, and
+   a generated `README.txt` with the per-copy CRC table, which file to
+   restore from and why not one-for-one, and the same-model-same-serial
+   rule; plus the files individually. Named with the serial and the date.
+   Plain language beside every result.
 
 ## What it never does
 
@@ -81,16 +87,22 @@ logic.
   no-driver-swap alternative.
 - Safari / Firefox / iOS: no WebUSB. Say so on the page.
 
-## Verification before publishing
+## Verification (done 18 August 2026, Chrome on macOS, serial 16402)
 
-1. Chrome on macOS against serial 16402: cold path (power-cycle first),
-   then loaded path (after pakon-tlx-macos has loaded it), both must give
-   files byte-identical to the existing backup in
-   `~/projects/pakon-eeprom-backup/F135plus-16402/eeprom/`.
-2. `claimInterface(0)` behaviour: confirm device-recipient control
-   transfers work with and without the claim; keep whichever is needed.
-3. Personality read under the loader matches `c0 05 0f 35 f2 07 aa 04`.
-4. Unplug mid-read: the page must show an error, not hang.
+1. Cold path: Connect showed `Unknown device [0f05:f235]`, Load completed
+   ("Firmware sent and started"), scanner re-enumerated as `F135-USB Film
+   Scanner`. Loaded path: Connect skipped step 2, Read gave A-primary bad
+   (1 byte at 0x0a5), A-backup good, B both good, serial 16402. The four
+   downloaded section files are byte-identical to the pakon-tlx-macos
+   backup in `~/projects/pakon-eeprom-backup/F135plus-16402/eeprom/`, and
+   the SHA256SUMS verifies.
+2. `claimInterface(0)`: not yet confirmed either way from the log; the
+   code claims in a try/catch and continues if refused.
+3. Personality read: cold Load path ran; value not captured in the notes.
+4. Unplug mid-read: not yet tried.
+
+Two independent reviews (nine and six findings) applied before the
+hardware test; see git history.
 
 ## Credits to carry in the README
 

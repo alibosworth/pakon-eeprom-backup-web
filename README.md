@@ -40,11 +40,18 @@ browser, is the answer to "can you do a tutorial".
    (`0xA4 wValue 0x00A5 wIndex 0x1234` select, then `0xA9` at byte offsets),
    both copies of both sections. Verify all four CRC-32s and the expected
    lengths (398 and 36 bytes), compare primary with backup, decode the
-   serial so you can see it is your unit. The 8-byte personality the loader
+   serial, scanner type (0x00C; 1351 is the F-135+) and revision (0x008;
+   the "revision 400" the OEM software shows) so you can see it is your
+   unit. The 8-byte personality the loader
    reported in step 2 is saved too, labelled as such: it is the loader's
    descriptor (id, VID, PID, revision), not a raw dump of the boot chip, and
    it is the same on every F-135.
-4. Download the files, named with the serial and date, plus a `SHA256SUMS`.
+4. Download everything as one zip (built in the page): the four section
+   files, the loader's 8-byte personality if step 2 ran, a `SHA256SUMS`,
+   and a `README.txt` recording the per-copy CRC results, the scanner's
+   serial, type and revision, which file to restore from (and why not
+   one-for-one when a copy is damaged), and that the data restores one
+   scanner only, same model and serial. Files are also offered singly.
 
 One read per power-on: after a read (or a failed one) the Read button stays
 off until the scanner is power-cycled and steps 1–3 are repeated. One unit
