@@ -117,9 +117,30 @@ copy the log below when asking for help.</p>
   and keep the file.</li>
   <li><strong>Safari, Firefox, phones, tablets</strong>: no.</li>
 </ul>
-<p>Source, credits and the longer explanation of what is per-unit and why:
-<a href="https://github.com/alibosworth/pakon-eeprom-backup-web">github.com/alibosworth/pakon-eeprom-backup-web</a>
-and <a href="https://pakon-reference.alibosworth.com/per-unit-data-and-safety/">pakon-reference: per-unit data and safety</a>.</p>
+<h2>Credits</h2>
+<p>This page puts a button on work done by others:</p>
+<ul>
+  <li>The read sequence (the two requests, decoded from a capture of Kodak's own
+  engine) is from Pablo Navarro's
+  <a href="https://github.com/pablonavarrob/pakon-tlx-macos">pakon-tlx-macos</a>,
+  <code>tools/eedump.py</code>.</li>
+  <li>The layout of the chip (two sections, two copies, the checksums, what each
+  field is) is from Guy Langford-Lee's
+  <a href="https://github.com/gazzdingo/pakon-mac">pakon-mac</a>,
+  <code>docs/69</code>.</li>
+  <li>The firmware-load procedure is FX35Loader's, as ported in pakon-tlx-macos
+  <code>server/pakonload.py</code>; the small generic loader is Cypress's.</li>
+  <li>What is per-unit on these scanners and why it matters:
+  <a href="https://pakon-reference.alibosworth.com/per-unit-data-and-safety/">pakon-reference, per-unit data and safety</a>.</li>
+</ul>
+<h2>If you'd rather do this on your own machine</h2>
+<p>Both projects above have command-line tools that read the same chip the same
+way, if you prefer not to use a web page: pakon-tlx-macos's
+<code>tools/eedump.py</code> (macOS, Python) and pakon-mac's
+<code>tools/eeprom_backup.py</code> (Python). Each needs a terminal and a Python
+setup, which is why this page exists.</p>
+<p>Source for this page:
+<a href="https://github.com/alibosworth/pakon-eeprom-backup-web">github.com/alibosworth/pakon-eeprom-backup-web</a>.</p>
 </section>
 </main>
 <script src="app.js?v=16"></script>
