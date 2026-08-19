@@ -531,6 +531,54 @@ function buildZip(files) {
   return zip;
 }
 
+function buildReadme(prefix) {
+  const now = new Date();
+  const lines = [];
+  lines.push(`Pakon F-135 / F-135+ per-unit EEPROM backup`);
+  lines.push(`Scanner serial: ${results.serial === null ? "unknown (no section A verified)" : results.serial}`);
+  lines.push(`Read on: ${now.toISOString()}`);
+  lines.push(`Read with: pakon-eeprom-backup-web (https://github.com/alibosworth/pakon-eeprom-backup-web), browser ${navigator.userAgent}`);
+  lines.push("");
+  lines.push("What this is");
+  lines.push("  The calibration EEPROM (I2C chip 0x52) of one scanner: serial number, per-resolution");
+  lines.push("  motor speeds, colour correction. Kodak stores it as two sections, each with a primary");
+  lines.push("  and a backup copy, each {u32 length; u32 crc32; payload} with zlib CRC-32 over the payload.");
+  lines.push("  Read with the Kodak engine's own two requests (0xA4 wValue 0x00A5 wIndex 0x1234, then 0xA9");
+  lines.push("  at byte offsets). Nothing was written to the scanner.");
+  lines.push("");
+  lines.push("Copies read");
+  for (const section of results.sections) {
+    const verdict = section.valid ? "good" : section.crcOk ? "CRC ok but unexpected length" : section.plausible ? "BAD CRC" : "no valid header";
+    const stored = section.plausible ? hex(section.storedCrc, 8) : "-";
+    const computed = section.computedCrc === null ? "-" : hex(section.computedCrc, 8);
+    lines.push(`  ${section.name.padEnd(17)} @0x${hex(section.base, 3)}  ${String(section.length).padStart(3)} bytes  stored crc ${stored}  computed ${computed}  ${verdict}`);
+  }
+  const primaryA = sectionByName("sectionA_primary");
+  const backupA = sectionByName("sectionA_backup");
+  const primaryB = sectionByName("sectionB_primary");
+  const backupB = sectionByName("sectionB_backup");
+  lines.push("");
+  lines.push("Which file to restore from, if that is ever needed");
+  const advise = (label, primary, backup) => {
+    if (primary.valid && backup.valid) return `  Section ${label}: both copies good; either file.`;
+    if (!primary.valid && backup.valid) return `  Section ${label}: primary is bad, backup is good; use the BACKUP file.`;
+    if (primary.valid && !backup.valid) return `  Section ${label}: primary is good, backup is bad; use the PRIMARY file.`;
+    return `  Section ${label}: neither copy verified; read again after a power-cycle.`;
+  };
+  lines.push(advise("A", primaryA, backupA));
+  lines.push(advise("B", primaryB, backupB));
+  lines.push("");
+  lines.push("Notes");
+  lines.push("  A bad primary with a good backup is common on these scanners; the Kodak software uses the");
+  lines.push("  backup silently and the scanner works normally. Nothing needs fixing. Restoring means an");
+  lines.push("  EEPROM write, which this tool does not do; only do that with the exact bytes of the good copy.");
+  lines.push("  This data is unique to this scanner. Do not write it to any other unit.");
+  lines.push("  The personality-8-bytes-from-loader file (if present) is what the boot loader reports about");
+  lines.push("  itself; it is the same on every F-135 and is kept for the record only.");
+  lines.push("  Files: " + prefix + "-*. Hashes in the SHA256SUMS file.");
+  return lines.join("\n") + "\n";
+}
+
 function download(name, bytes) {
   const blob = new Blob([bytes], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
@@ -555,6 +603,7 @@ async function renderDownloads() {
   const sums = [];
   for (const file of files) sums.push(`${await sha256Hex(file.bytes)}  ${file.name}`);
   files.push({ name: `${prefix}-SHA256SUMS`, bytes: new TextEncoder().encode(sums.join("\n") + "\n") });
+  files.push({ name: `${prefix}-README.txt`, bytes: new TextEncoder().encode(buildReadme(prefix)) });
 
   for (const file of files) {
     const button = document.createElement("button");
