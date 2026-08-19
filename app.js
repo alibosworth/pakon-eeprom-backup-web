@@ -572,7 +572,9 @@ function buildReadme(prefix) {
   lines.push("  A bad primary with a good backup appears common on these scanners; the Kodak software uses the");
   lines.push("  backup silently and the scanner works normally. Nothing needs fixing. Restoring means an");
   lines.push("  EEPROM write, which this tool does not do; only do that with the exact bytes of the good copy.");
-  lines.push("  This data is unique to this scanner. Do not write it to any other unit.");
+  lines.push(`  This data belongs to one scanner only: the F-135 / F-135+ with serial ${results.serial === null ? "(see above)" : results.serial}.`);
+  lines.push("  It must only ever be used to restore that exact scanner, same model, same serial number.");
+  lines.push("  Written to any other unit it would give that unit the wrong motor speeds and colour correction.");
   lines.push("  The personality-8-bytes-from-loader file (if present) is what the boot loader reports about");
   lines.push("  itself; it is the same on every F-135 and is kept for the record only.");
   lines.push("  Files: " + prefix + "-*. Hashes in the SHA256SUMS file.");
