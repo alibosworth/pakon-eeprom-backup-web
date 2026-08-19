@@ -252,10 +252,16 @@ async function loadFirmware() {
   const application = await fetchFirmware(firmwareName);
   await downloadRecords(application);
   await hold8051(1);
+  // Release the CPU: the first CPUCS write must succeed; the second (0xE600, the FX2's
+  // real CPUCS) starts the application, which drops the scanner off the bus mid-request.
+  // Only that disconnect is tolerated; any other error is real.
+  await controlOut(REQUEST_LOAD_INTERNAL, CPUCS_EZUSB, 0, new Uint8Array([0]));
   try {
-    await hold8051(0);
+    await controlOut(REQUEST_LOAD_INTERNAL, CPUCS_FX2, 0, new Uint8Array([0]));
   } catch (error) {
-    // The scanner drops off the bus as the application starts; that is expected.
+    const looksLikeDisconnect = /disconnect|not found|no device|unavailable|NetworkError|removed|invalid state/i.test(`${error.name} ${error.message}`);
+    if (!looksLikeDisconnect) throw error;
+    log(`  (scanner dropped off the bus as the firmware started: ${error.message})`, "muted");
   }
   log("Firmware sent and started. The scanner is now restarting itself with it; this takes about five seconds.", "ok");
 }
@@ -439,6 +445,10 @@ async function onReadClick() {
   }
 }
 
+function sameBytes(left, right) {
+  return left.length === right.length && left.every((byte, index) => byte === right[index]);
+}
+
 function sectionByName(name) {
   return results.sections.find((section) => section.name === name);
 }
@@ -471,7 +481,10 @@ async function renderResults() {
   const backupB = sectionByName("sectionB_backup");
   const goodA = primaryA.valid ? primaryA : backupA.valid ? backupA : null;
   const goodB = primaryB.valid ? primaryB : backupB.valid ? backupB : null;
-  const allFour = primaryA.valid && backupA.valid && primaryB.valid && backupB.valid;
+  const sameA = sameBytes(primaryA.bytes, backupA.bytes);
+  const sameB = sameBytes(primaryB.bytes, backupB.bytes);
+  const allFour = primaryA.valid && backupA.valid && primaryB.valid && backupB.valid && sameA && sameB;
+  const divergent = (primaryA.valid && backupA.valid && !sameA) || (primaryB.valid && backupB.valid && !sameB);
   const summary = document.getElementById("summary");
   const parts = [];
   if (goodA) {
@@ -484,14 +497,16 @@ async function renderResults() {
       Negative matrix diagonal ${decoded.negDiagonal.map((value) => value.toFixed(4)).join(", ")}.</p>`);
   }
   const pairNote = (label, primary, backup) => {
-    if (primary.valid && backup.valid) return `<p>Section ${label}: both copies good.</p>`;
+    if (primary.valid && backup.valid && sameBytes(primary.bytes, backup.bytes)) return `<p>Section ${label}: both copies good and identical.</p>`;
+    if (primary.valid && backup.valid) return `<p><strong>Section ${label}: both copies pass their checksums but they are not the same.</strong> Each is internally consistent, so this is two different versions of the calibration, not damage. Keep both files. Which one is authoritative cannot be told from here (the Kodak software uses the primary when it validates); do not treat them as interchangeable if restoring.</p>`;
     if (!primary.valid && backup.valid) return `<p><strong>Section ${label}: the primary copy is bad and the backup copy is good.</strong> This appears common on these scanners (both units checked before this one were like this); the Kodak software quietly uses the backup copy and the scanner works normally. Nothing needs fixing; leave the scanner as it is and keep these files. (If the chip ever has to be restored, don't copy the files back one for one: the primary file contains the damaged byte and would put the fault back. Write the <em>backup</em> file's bytes into both the primary and the backup slot for section ${label}.)</p>`;
     if (primary.valid && !backup.valid) return `<p><strong>Section ${label}: the primary copy is good and the backup copy is bad.</strong> The scanner works normally from the primary. Nothing needs fixing; keep both files. (If the chip ever has to be restored, don't copy the files back one for one: the backup file contains the damage. Write the <em>primary</em> file's bytes into both slots for section ${label}.)</p>`;
     return `<p><strong>Section ${label}: neither copy verified.</strong> Keep the files anyway, power-cycle the scanner and read again; if it repeats, the chip may be failing and these files are what you have.</p>`;
   };
   parts.push(pairNote("A", primaryA, backupA));
   parts.push(pairNote("B", primaryB, backupB));
-  if (allFour) parts.push("<p><strong>All four copies verified.</strong> Download the files below and keep them somewhere safe (two places is better than one).</p>");
+  if (allFour) parts.push("<p><strong>All four copies verified and each pair identical.</strong> Download the files below and keep them somewhere safe (two places is better than one).</p>");
+  else if (divergent) parts.push("<p><strong>Complete, with a divergence:</strong> every copy passes its checksum, but one section's two copies differ (see above). Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else if (goodA && goodB) parts.push("<p><strong>Sufficient for recovery:</strong> at least one good copy of each section. Download the files below and keep them somewhere safe (two places is better than one).</p>");
   else parts.push("<p><strong>Not a complete backup yet.</strong> Download what was read, then try again after a power-cycle.</p>");
   summary.innerHTML = parts.join("");
@@ -572,7 +587,8 @@ function buildReadme(prefix) {
   lines.push("");
   lines.push("Which file to restore from, if that is ever needed");
   const advise = (label, primary, backup) => {
-    if (primary.valid && backup.valid) return `  Section ${label}: both copies good; either file, into both slots.`;
+    if (primary.valid && backup.valid && sameBytes(primary.bytes, backup.bytes)) return `  Section ${label}: both copies good and identical; either file, into both slots.`;
+    if (primary.valid && backup.valid) return `  Section ${label}: both copies pass their checksums but DIFFER. Two internally consistent versions; which is authoritative is not known (the Kodak software uses the primary when it validates). Keep both. Do not treat them as interchangeable when restoring.`;
     if (!primary.valid && backup.valid) return `  Section ${label}: primary is bad, backup is good. Do NOT copy the files back one for one (that would put the fault back); write the BACKUP file's bytes into both the primary and the backup slot.`;
     if (primary.valid && !backup.valid) return `  Section ${label}: primary is good, backup is bad. Do NOT copy the files back one for one; write the PRIMARY file's bytes into both slots.`;
     return `  Section ${label}: neither copy verified; read again after a power-cycle.`;
@@ -594,7 +610,7 @@ function buildReadme(prefix) {
     lines.push("  No personality file this time: the scanner already had its firmware running, so step 2");
     lines.push("  (where the loader reports it) was skipped. It is the same on every F-135 and not needed.");
   }
-  lines.push("  Files: " + prefix + "-*. Hashes in the SHA256SUMS file.");
+  lines.push("  Files: " + prefix + "-*. SHA-256 of every file (this one included) in the SHA256SUMS file.");
   return lines.join("\n") + "\n";
 }
 
@@ -619,10 +635,10 @@ async function renderDownloads() {
   // The 8 bytes the loader reports (id, VID, PID, revision, one more byte), not a raw dump of the
   // 0x51 chip. Its contents are the same on every F-135 and are replaceable; kept for the record.
   if (bootPersonality) files.push({ name: `${prefix}-personality-8-bytes-from-loader.bin`, bytes: bootPersonality });
+  files.push({ name: `${prefix}-README.txt`, bytes: new TextEncoder().encode(buildReadme(prefix)) });
   const sums = [];
   for (const file of files) sums.push(`${await sha256Hex(file.bytes)}  ${file.name}`);
   files.push({ name: `${prefix}-SHA256SUMS`, bytes: new TextEncoder().encode(sums.join("\n") + "\n") });
-  files.push({ name: `${prefix}-README.txt`, bytes: new TextEncoder().encode(buildReadme(prefix)) });
 
   for (const file of files) {
     const button = document.createElement("button");
