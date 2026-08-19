@@ -1,8 +1,8 @@
 # pakon-eeprom-backup-web
 
 Back up a Pakon F-135 / F-135+ scanner's per-unit calibration EEPROM from a
-web page. Chrome or Edge, a USB cable, three clicks, nothing to install. It
-reads only; it cannot write to the scanner.
+web page. Works in Chrome or Edge, with nothing to install. It reads only; it
+cannot write to the scanner.
 
 Live page: (to be published on GitHub Pages)
 
