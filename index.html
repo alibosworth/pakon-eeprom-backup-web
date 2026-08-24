@@ -67,9 +67,11 @@ writes to the scanner's chips.</p>
   <h3>Files</h3>
   <p>Keep all of them together. The <code>SHA256SUMS</code> file lets you (or
   anyone) check later that they haven't been damaged. The
-  <code>personality-8-bytes-from-loader</code> file is what the scanner's boot
-  loader reports about itself; it is the same on every F-135 and is kept for
-  the record only.</p>
+  <code>0x51-boot-eeprom</code> file is the scanner's boot chip, and the
+  <code>personality-8-bytes-from-loader</code> file is what its boot loader reports
+  about itself. Both are the same on every F-135, and both can be rewritten from
+  known values, so unlike the calibration chip they are kept for completeness rather
+  than because they could not be replaced.</p>
   <div id="downloads"></div>
 </section>
 
@@ -94,13 +96,21 @@ copy the log below when asking for help.</p>
   the page stops before sending Kodak's firmware. (By then the small generic
   Cypress loader is already in the scanner's working memory; that is harmless,
   and switching the scanner off clears it.)</li>
-  <li>To read the chip (step 3): <code>0xA4</code> with value <code>0x00A5</code>
-  (select the chip, read direction) then <code>0xA9</code> at increasing offsets,
-  32 bytes at a time. This is the sequence Kodak's own engine (TLB.dll) issues at
-  every launch, taken from a capture of it.</li>
-  <li>Never: <code>0xA2</code> (the EEPROM write request), any other value on
-  <code>0xA4</code>, or any command to the scanner's motor and light controllers.
-  The page contains no code for any of those.</li>
+  <li>To read the calibration chip (step 3): <code>0xA4</code> with value
+  <code>0x00A5</code> (select the chip, read direction) then <code>0xA9</code> at
+  increasing offsets, 32 bytes at a time. This is the sequence Kodak's own engine
+  (TLB.dll) issues at every launch, taken from a capture of it.</li>
+  <li>Then the boot chip, the same way, with value <code>0x00A3</code> in the
+  select. That chip holds the nine bytes giving the scanner its USB identity. It is
+  read last, so if your scanner does not answer, the calibration data is already
+  read and kept; the page says so and carries on. Kodak's engine does not make this
+  particular read, although the select value is the documented one for that chip.</li>
+  <li>Never: <code>0xA2</code> (the EEPROM write request), or any command to the
+  scanner's motor and light controllers. The page contains no code for either. The
+  only values it ever puts on <code>0xA4</code> are the two selects above and the
+  loader's init (<code>0xA1</code>). Both selects are odd numbers, which is the read
+  direction; the even counterparts, which would select a chip for writing, appear
+  nowhere in the page.</li>
   <li>The page makes no network requests except loading its own files. Nothing
   you read leaves your computer.</li>
 </ul>
