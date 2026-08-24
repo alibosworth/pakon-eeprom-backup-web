@@ -46,8 +46,17 @@ browser, is the answer to "can you do a tutorial".
    reported in step 2 is saved too, labelled as such: it is the loader's
    descriptor (id, VID, PID, revision), not a raw dump of the boot chip, and
    it is the same on every F-135.
+   Then read the boot EEPROM itself (chip `0x51`), which is the same two
+   requests with `0x00A3` in the select. It holds the 9-byte FX2 personality
+   as actually stored, `c0 05 0f 35 f2 07 aa 04 02`, then `0xFF` padding, with
+   no length header and no CRC. This one is read last and its failure is not
+   fatal: the chip is replaceable, so nothing is risked for it once the
+   calibration data is in hand. Because a firmware that ignored the select
+   would return chip `0x52`'s bytes instead, the result is only kept if it
+   carries the `0xC0` signature and the expected VID and PID, and matches the
+   personality the loader reported.
 4. Download everything as one zip (built in the page): the four section
-   files, the loader's 8-byte personality if step 2 ran, a `SHA256SUMS`,
+   files, the boot EEPROM, the loader's 8-byte personality if step 2 ran, a `SHA256SUMS`,
    and a `README.txt` recording the per-copy CRC results, the scanner's
    serial, type and revision, which file to restore from (and why not
    one-for-one when a copy is damaged), and that the data restores one

@@ -5,9 +5,12 @@
 //   0xA0  FX2 RAM write (firmware load; RAM only, wiped at power-off)
 //   0xA3  FX2 external RAM write (firmware load, served by the stage-2 loader)
 //   0xA4  wValue 0xA1: loader init.  wValue 0x00A5: select calibration EEPROM for READ.
+//         wValue 0x00A3: select boot EEPROM (chip 0x51) for READ.
 //   0xA9  read: wIndex 0 = boot personality (under the loader);
-//               wIndex 0x1234 = calibration EEPROM at byte offset wValue.
+//               wIndex 0x1234 = EEPROM at byte offset wValue, whichever chip was selected.
 // There is no 0xA2 (EEPROM write) anywhere in this file, and no bulk transfer.
+// Both select values are odd, which is the read direction. The even counterparts
+// (0x00A4 for chip 0x52, 0x00A2 for chip 0x51) would select for writing and are never issued.
 
 "use strict";
 
@@ -44,6 +47,13 @@ const LOADER_INIT_VALUE = 0xa1;
 const EEPROM_INDEX = 0x1234;
 const EEPROM_READ_SELECT = 0x00a5;   // (0x52 << 1) | 1 : chip 0x52, read direction
 const EEPROM_CHUNK_BYTES = 32;
+// The boot EEPROM at I2C 0x51. The select value is general, ((0x50 | n) << 1) | direction,
+// so the same two requests reach it. It carries the 9-byte FX2 C0-load personality and
+// nothing else known; the rest reads as 0xFF. Unlike chip 0x52 it has no length header and
+// no CRC, and its contents are the same on every F-135 and F-135+, so it is replaceable.
+const BOOT_EEPROM_READ_SELECT = 0x00a3;   // (0x51 << 1) | 1 : chip 0x51, read direction
+const BOOT_EEPROM_LENGTH = 256;
+const BOOT_EEPROM_PERSONALITY_BYTES = 9;
 const SECTION_A_LENGTH = 398;
 const SECTION_B_LENGTH = 36;
 const SECTIONS = [
@@ -221,6 +231,7 @@ async function downloadRecords(records) {
 }
 
 let bootPersonality = null;
+let bootEeprom = null;
 
 async function loadFirmware() {
   log("Loading the second-stage loader into scanner RAM…");
@@ -308,6 +319,36 @@ function decodeSectionA(bytes) {
   return { revision, scannerType, serial, triples, negDiagonal };
 }
 
+async function readBootEepromRegion(offset, length) {
+  await controlOut(REQUEST_INIT_OR_SELECT, BOOT_EEPROM_READ_SELECT, EEPROM_INDEX);
+  return controlIn(REQUEST_READ, offset, EEPROM_INDEX, length);
+}
+
+// Reads chip 0x51 and checks that what came back is really that chip. If the firmware
+// ignored the select, the read would return chip 0x52's bytes instead, which must not be
+// saved under the boot EEPROM's name; the personality's fixed prefix is what tells them
+// apart. Returns null rather than throwing: this chip is replaceable, and by the time it
+// runs the irreplaceable data is already read.
+async function readBootEeprom() {
+  const bytes = new Uint8Array(BOOT_EEPROM_LENGTH);
+  for (let offset = 0; offset < BOOT_EEPROM_LENGTH; offset += EEPROM_CHUNK_BYTES) {
+    const chunk = await readBootEepromRegion(offset, Math.min(EEPROM_CHUNK_BYTES, BOOT_EEPROM_LENGTH - offset));
+    bytes.set(chunk, offset);
+  }
+  if (bytes[0] !== PERSONALITY_ID) {
+    return { bytes, trusted: false, reason: `first byte is 0x${hex(bytes[0])}, not the 0xC0 C0-load signature` };
+  }
+  const vendor = readU16(bytes, 1);
+  const product = readU16(bytes, 3);
+  if (vendor !== VENDOR_ID || product !== PRODUCT_ID_COLD) {
+    return { bytes, trusted: false, reason: `holds ${hex(vendor, 4)}:${hex(product, 4)}, not the expected ${hex(VENDOR_ID, 4)}:${hex(PRODUCT_ID_COLD, 4)}` };
+  }
+  if (bootPersonality && !sameBytes(bytes.subarray(0, 7), bootPersonality.subarray(0, 7))) {
+    return { bytes, trusted: false, reason: "does not match the personality the loader reported in step 2" };
+  }
+  return { bytes, trusted: true, reason: null };
+}
+
 // ---------------------------------------------------------------- UI glue
 
 const results = { sections: [], serial: null, decoded: null, overall: null };
@@ -330,7 +371,10 @@ function showError(error) {
 async function requestScanner(filters) {
   const candidate = await navigator.usb.requestDevice({ filters });
   device = await openDevice(candidate);
-  log(`Connected: ${hex(device.vendorId, 4)}:${hex(device.productId, 4)}  (${device.productName || "no name"}, rev 0x${hex(device.deviceVersionMajor, 2)}${hex(device.deviceVersionMinor, 2)})`);
+  // bcdDevice is major.minor.subminor; printing only major and minor turned a cold
+  // F-135+ into "rev 0xaa00" when it announces 0xaa07, which reads as the wrong model.
+  const announcedRevision = ((device.deviceVersionMajor & 0xff) << 8) | ((device.deviceVersionMinor & 0xf) << 4) | (device.deviceVersionSubminor & 0xf);
+  log(`Connected: ${hex(device.vendorId, 4)}:${hex(device.productId, 4)}  (${device.productName || "no name"}, rev 0x${hex(announcedRevision, 4)})`);
   return device;
 }
 
@@ -428,6 +472,22 @@ async function onReadClick() {
       results.sections.push(read);
       const verdict = read.valid ? "CRC ok" : read.crcOk ? `CRC ok but unexpected length (expected ${read.expectedLength})` : read.plausible ? "CRC MISMATCH" : "no valid header";
       log(`  ${read.name.padEnd(17)} @0x${hex(read.base, 3)}  ${read.length} bytes  ${verdict}`, read.valid ? "ok" : "warn");
+    }
+    // The boot EEPROM last, on purpose: it is replaceable, and attempting it must not risk
+    // the calibration data, which is read and kept by this point. A failure here is a note,
+    // not an error.
+    bootEeprom = null;
+    log("Reading the boot EEPROM (chip 0x51)…");
+    try {
+      const boot = await readBootEeprom();
+      if (boot.trusted) {
+        bootEeprom = boot.bytes;
+        log(`  boot EEPROM      @0x51    ${BOOT_EEPROM_LENGTH} bytes  personality ${bytesToHex(boot.bytes.subarray(0, BOOT_EEPROM_PERSONALITY_BYTES))}`, "ok");
+      } else {
+        log(`  boot EEPROM not saved: ${boot.reason}. The calibration EEPROM above is unaffected.`, "warn");
+      }
+    } catch (bootError) {
+      log(`  boot EEPROM could not be read: ${bootError.message}. This chip is replaceable and identical on every F-135, so nothing is lost. The calibration EEPROM above is unaffected.`, "warn");
     }
     await renderResults();
     setStep(3, "done");
@@ -610,9 +670,16 @@ function buildReadme(prefix) {
   lines.push(`  This data belongs to one scanner only: the F-135 / F-135+ with serial ${results.serial === null ? "(see above)" : results.serial}.`);
   lines.push("  It must only ever be used to restore that exact scanner, same model, same serial number.");
   lines.push("  Written to any other unit it would give that unit the wrong motor speeds and colour correction.");
+  if (bootEeprom) {
+    lines.push("  The 0x51-boot-eeprom file is the raw boot EEPROM: the 9-byte FX2 personality as stored on");
+    lines.push("  that chip, then 0xFF padding. It has no length header and no CRC. These bytes are the same");
+    lines.push("  on every F-135 and F-135+ and can be rewritten from the known values, so unlike the 0x52");
+    lines.push("  chip it is replaceable; it is kept for completeness.");
+  }
   if (bootPersonality) {
     lines.push("  The personality-8-bytes-from-loader file is what the boot loader reported about itself in");
-    lines.push("  step 2; it is the same on every F-135 and is kept for the record only.");
+    lines.push("  step 2. That is the loader's own descriptor, not a dump of a chip, which is why it can");
+    lines.push("  differ in length and layout from the 0x51 file above.");
   } else {
     lines.push("  No personality file this time: the scanner already had its firmware running, so step 2");
     lines.push("  (where the loader reports it) was skipped. It is the same on every F-135 and not needed.");
@@ -642,6 +709,9 @@ async function renderDownloads() {
   // The 8 bytes the loader reports (id, VID, PID, revision, one more byte), not a raw dump of the
   // 0x51 chip. Its contents are the same on every F-135 and are replaceable; kept for the record.
   if (bootPersonality) files.push({ name: `${prefix}-personality-8-bytes-from-loader.bin`, bytes: bootPersonality });
+  // The raw boot EEPROM, when the scanner let us read it: the 9-byte personality as actually
+  // stored on chip 0x51, then 0xFF padding. Distinct from the loader's 8-byte report above.
+  if (bootEeprom) files.push({ name: `${prefix}-0x51-boot-eeprom.bin`, bytes: bootEeprom });
   files.push({ name: `${prefix}-README.txt`, bytes: new TextEncoder().encode(buildReadme(prefix)) });
   const sums = [];
   for (const file of files) sums.push(`${await sha256Hex(file.bytes)}  ${file.name}`);
