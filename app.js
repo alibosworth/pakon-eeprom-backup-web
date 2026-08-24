@@ -232,6 +232,8 @@ async function downloadRecords(records) {
 
 let bootPersonality = null;
 let bootEeprom = null;
+// True only across the firmware start in step 2, where losing the device is expected.
+let expectingReenumeration = false;
 
 async function loadFirmware() {
   log("Loading the second-stage loader into scanner RAM…");
@@ -267,6 +269,7 @@ async function loadFirmware() {
   // real CPUCS) starts the application, which drops the scanner off the bus mid-request.
   // Only that disconnect is tolerated; any other error is real.
   await controlOut(REQUEST_LOAD_INTERNAL, CPUCS_EZUSB, 0, new Uint8Array([0]));
+  expectingReenumeration = true;
   try {
     await controlOut(REQUEST_LOAD_INTERNAL, CPUCS_FX2, 0, new Uint8Array([0]));
   } catch (error) {
@@ -396,11 +399,16 @@ async function onConnectClick() {
       : `Connected: Unknown device [0f05:f235], the scanner before its firmware is loaded. Go to step 2.`;
     connected.hidden = false;
     if (device.productId === PRODUCT_ID_LOADED) {
-      log("The scanner already has its firmware running; step 2 is not needed.");
+      // Landing warm still reads the chips, but it is the weaker backup: the read is
+      // not the first of the power cycle, and the loader has already handed over, so
+      // its personality report is gone. Say so rather than presenting it as a shortcut.
+      log("The scanner already has its firmware running, so step 2 is not needed. This is the less complete option; see the note above.", "warn");
+      document.getElementById("warmWarning").hidden = false;
       setStep(2, "done");
       setStep(3, "ready");
       return;
     }
+    document.getElementById("warmWarning").hidden = true;
     const usbRevision = ((device.deviceVersionMajor & 0xff) << 8) | ((device.deviceVersionMinor & 0xf) << 4) | (device.deviceVersionSubminor & 0xf);
     pendingFirmwareName = REVISION_TO_FIRMWARE[usbRevision] || null;
     const detected = document.getElementById("detected");
@@ -627,6 +635,11 @@ function buildReadme(prefix) {
     lines.push(`Revision: ${results.decoded.revision} (as shown by the Kodak software); USB firmware revision aa07 (F-135 / F-135+)`);
   }
   lines.push(`Read on: ${now.toISOString()}`);
+  // Whether this was the first read of the power cycle decides how much the dump is
+  // worth, so the archive should say, not just the person who made it.
+  lines.push(bootPersonality
+    ? "Started from: a cold scanner. This page loaded the firmware itself, so this read is the first of the power cycle, which is the one to trust."
+    : "Started from: a scanner that already had its firmware running. This read is NOT known to be the first of its power cycle, and no loader personality was available. The checksums below still stand on their own; for a stronger backup, power-cycle and read again.");
   lines.push(`Read with: pakon-eeprom-backup-web, https://alibosworth.github.io/pakon-eeprom-backup-web/ (source: https://github.com/alibosworth/pakon-eeprom-backup-web), browser ${navigator.userAgent}`);
   lines.push("");
   lines.push("What this is");
@@ -779,11 +792,37 @@ function init() {
   document.getElementById("connectButton").addEventListener("click", onConnectClick);
   document.getElementById("loadButton").addEventListener("click", onLoadClick);
   document.getElementById("readButton").addEventListener("click", onReadClick);
+  // Chrome remembers a scanner the user has picked before, which is why it comes back
+  // marked "Paired" in the picker on a later visit. Asking for those devices up front
+  // costs nothing and needs no picker, so a scanner that is already awake can be called
+  // out before the user clicks anything, instead of one step too late.
+  navigator.usb.getDevices().then((permitted) => {
+    if (device) return;
+    const alreadyRunning = permitted.find((candidate) => candidate.vendorId === VENDOR_ID && candidate.productId === PRODUCT_ID_LOADED);
+    if (!alreadyRunning) return;
+    document.getElementById("warmWarning").hidden = false;
+    log(`${alreadyRunning.productName || "The scanner"} is plugged in with its firmware already running. Read the note in step 1 before continuing.`, "warn");
+  }).catch(() => { /* listing remembered devices is a convenience; never block on it */ });
   navigator.usb.addEventListener("disconnect", (event) => {
-    if (device && event.device === device) {
-      log("Scanner disconnected.", "muted");
-      device = null;
+    if (!device || event.device !== device) return;
+    device = null;
+    // Step 2 drops the scanner off the bus on purpose, when the firmware it was just
+    // given starts and the device re-enumerates under a new product id. That one is
+    // part of the flow and must not look like a fault or undo the step.
+    if (expectingReenumeration) {
+      log("  (scanner off the bus while it restarts with the new firmware; expected)", "muted");
+      return;
     }
+    log("Scanner disconnected. If you switched it off, that is the right thing to do before a fresh read: switch it back on and start again from step 1. Anything already read stays on this page and can still be downloaded.", "warn");
+    // A step that is mid-flight does its own tidying up in its catch; stay out of its way,
+    // or the buttons come back while it is still running.
+    if (busy) return;
+    document.getElementById("connected").hidden = true;
+    document.getElementById("warmWarning").hidden = true;
+    document.getElementById("detected").textContent = "";
+    setStep(1, "ready");
+    setStep(2, "waiting");
+    setStep(3, "waiting");
   });
 }
 
