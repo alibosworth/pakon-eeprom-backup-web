@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pakon EEPROM Backup</title>
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <main>
@@ -29,6 +29,18 @@ writes to the scanner's chips.</p>
   and F-135+; it will recognise an F-235 or F-335 and stop.</p>
   <button id="connectButton" class="primary">Connect to the scanner</button>
   <p id="connected" class="status" hidden></p>
+  <div id="warmWarning" class="notice soft" hidden>
+    <p><strong>You can back up the EEPROM now, but this is the less complete
+    option.</strong>
+    Something has already loaded the scanner's firmware since it was last
+    switched on, so this would not be the first read after power-on, and the
+    boot loader has already handed over and can no longer report the
+    personality.</p>
+    <p>If you want the most archival backup of your EEPROM, switch the scanner
+    off and on, reload this page, and start again from step 1. That way the read
+    is the first one of the power cycle, which is the one to trust, and the boot
+    loader's own report is captured as well.</p>
+  </div>
 </section>
 
 <section id="step2" class="step" data-state="waiting">
@@ -151,6 +163,6 @@ in the second. Each needs a terminal and a Python setup.</p>
 <a href="https://github.com/alibosworth/pakon-eeprom-backup-web">github.com/alibosworth/pakon-eeprom-backup-web</a>.</p>
 </section>
 </main>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

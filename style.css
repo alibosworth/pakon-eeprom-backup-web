@@ -46,5 +46,17 @@ tr.bad td:nth-child(4) { color: var(--bad); font-weight: 600; }
 a { color: var(--accent); }
 .notice { background: var(--panel); border: 1px solid var(--border); padding: .75rem 1rem; }
 .notice.warn { border-color: var(--warn); }
+/* Sits inside a .step, which is already --panel, so the tint has to be mixed against
+   that rather than the page background or it comes out invisible. Falls back to a flat
+   panel anywhere color-mix is missing. */
+.notice.soft {
+  background: var(--panel);
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+  border: 0;
+  margin: 1.5rem 0 .25rem;
+  padding: .9rem 1.1rem;
+}
+.notice.soft p { margin: 0; }
+.notice.soft p + p { margin-top: .65rem; }
 .muted { color: var(--muted); }
 .status { color: var(--ok); font-weight: 600; margin: .5rem 0 0; }
