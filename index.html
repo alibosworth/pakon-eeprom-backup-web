@@ -79,11 +79,13 @@ writes to the scanner's chips.</p>
   <h3>Files</h3>
   <p>Keep all of them together. The <code>SHA256SUMS</code> file lets you (or
   anyone) check later that they haven't been damaged. The
-  <code>0x51-boot-eeprom</code> file is the scanner's boot chip, and the
-  <code>personality-8-bytes-from-loader</code> file is what its boot loader reports
-  about itself. Both are the same on every F-135, and both can be rewritten from
-  known values, so unlike the calibration chip they are kept for completeness rather
-  than because they could not be replaced.</p>
+  <code>0x51-boot-personality</code> file is the scanner's boot chip entire, whose
+  first 8 bytes are the record giving the scanner its USB identity, followed by one
+  byte nobody has explained and then padding. The
+  <code>personality-8-bytes-from-loader</code> file is that same 8-byte record as the
+  boot loader reported it in step 2. Both are the same on every F-135 and can be
+  rewritten from known values, so unlike the calibration chip they are kept for
+  completeness rather than because they could not be replaced.</p>
   <div id="downloads"></div>
 </section>
 
@@ -163,6 +165,6 @@ in the second. Each needs a terminal and a Python setup.</p>
 <a href="https://github.com/alibosworth/pakon-eeprom-backup-web">github.com/alibosworth/pakon-eeprom-backup-web</a>.</p>
 </section>
 </main>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

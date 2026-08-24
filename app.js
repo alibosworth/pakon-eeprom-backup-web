@@ -48,12 +48,13 @@ const EEPROM_INDEX = 0x1234;
 const EEPROM_READ_SELECT = 0x00a5;   // (0x52 << 1) | 1 : chip 0x52, read direction
 const EEPROM_CHUNK_BYTES = 32;
 // The boot EEPROM at I2C 0x51. The select value is general, ((0x50 | n) << 1) | direction,
-// so the same two requests reach it. It carries the 9-byte FX2 C0-load personality and
-// nothing else known; the rest reads as 0xFF. Unlike chip 0x52 it has no length header and
-// no CRC, and its contents are the same on every F-135 and F-135+, so it is replaceable.
+// so the same two requests reach it. Byte 0 begins an 8-byte Cypress C0 boot record, which
+// is the personality proper; a ninth byte follows it whose purpose is not known, and the
+// rest of the chip reads as 0xFF. Unlike chip 0x52 there is no length header and no CRC,
+// and the contents are the same on every F-135 and F-135+, so this chip is replaceable.
 const BOOT_EEPROM_READ_SELECT = 0x00a3;   // (0x51 << 1) | 1 : chip 0x51, read direction
 const BOOT_EEPROM_LENGTH = 256;
-const BOOT_EEPROM_PERSONALITY_BYTES = 9;
+const BOOT_RECORD_BYTES = 9;   // the 8-byte C0 record plus the unexplained ninth
 const SECTION_A_LENGTH = 398;
 const SECTION_B_LENGTH = 36;
 const SECTIONS = [
@@ -490,7 +491,7 @@ async function onReadClick() {
       const boot = await readBootEeprom();
       if (boot.trusted) {
         bootEeprom = boot.bytes;
-        log(`  boot EEPROM      @0x51    ${BOOT_EEPROM_LENGTH} bytes  personality ${bytesToHex(boot.bytes.subarray(0, BOOT_EEPROM_PERSONALITY_BYTES))}`, "ok");
+        log(`  boot EEPROM      @0x51    ${BOOT_EEPROM_LENGTH} bytes  personality ${bytesToHex(boot.bytes.subarray(0, BOOT_RECORD_BYTES))}`, "ok");
       } else {
         log(`  boot EEPROM not saved: ${boot.reason}. The calibration EEPROM above is unaffected.`, "warn");
       }
@@ -684,10 +685,12 @@ function buildReadme(prefix) {
   lines.push("  It must only ever be used to restore that exact scanner, same model, same serial number.");
   lines.push("  Written to any other unit it would give that unit the wrong motor speeds and colour correction.");
   if (bootEeprom) {
-    lines.push("  The 0x51-boot-eeprom file is the raw boot EEPROM: the 9-byte FX2 personality as stored on");
-    lines.push("  that chip, then 0xFF padding. It has no length header and no CRC. These bytes are the same");
-    lines.push("  on every F-135 and F-135+ and can be rewritten from the known values, so unlike the 0x52");
-    lines.push("  chip it is replaceable; it is kept for completeness.");
+    lines.push("  The 0x51-boot-personality file is the whole boot chip, all 256 bytes. What is meaningful");
+    lines.push("  is at the start: an 8-byte Cypress C0 boot record (signature 0xC0, then VID, PID, device");
+    lines.push("  id and a configuration byte), which is the personality proper, then a ninth byte whose");
+    lines.push("  purpose is not known, then 0xFF to the end. No length header and no CRC. These bytes are");
+    lines.push("  the same on every F-135 and F-135+ and can be rewritten from known values, so unlike the");
+    lines.push("  0x52 chip this one is replaceable; it is kept for completeness.");
   }
   if (bootPersonality) {
     lines.push("  The personality-8-bytes-from-loader file is what the boot loader reported about itself in");
@@ -697,7 +700,7 @@ function buildReadme(prefix) {
     lines.push("  No personality-from-loader file this time: the scanner already had its firmware running,");
     lines.push("  so step 2 was skipped and there was no loader to report it. Nothing is missing on that");
     lines.push(bootEeprom
-      ? "  account; the 0x51 file above is the chip itself, which is the better record of the two."
+      ? "  account; the 0x51 file above is the chip itself, which contains that same C0 record."
       : "  account; those bytes are the same on every F-135 and can be rewritten from known values.");
   }
   lines.push("  Files: " + prefix + "-*. SHA-256 of every file (this one included) in the SHA256SUMS file.");
@@ -727,7 +730,7 @@ async function renderDownloads() {
   if (bootPersonality) files.push({ name: `${prefix}-personality-8-bytes-from-loader.bin`, bytes: bootPersonality });
   // The raw boot EEPROM, when the scanner let us read it: the 9-byte personality as actually
   // stored on chip 0x51, then 0xFF padding. Distinct from the loader's 8-byte report above.
-  if (bootEeprom) files.push({ name: `${prefix}-0x51-boot-eeprom.bin`, bytes: bootEeprom });
+  if (bootEeprom) files.push({ name: `${prefix}-0x51-boot-personality.bin`, bytes: bootEeprom });
   files.push({ name: `${prefix}-README.txt`, bytes: new TextEncoder().encode(buildReadme(prefix)) });
   const sums = [];
   for (const file of files) sums.push(`${await sha256Hex(file.bytes)}  ${file.name}`);
