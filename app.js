@@ -681,8 +681,11 @@ function buildReadme(prefix) {
     lines.push("  step 2. That is the loader's own descriptor, not a dump of a chip, which is why it can");
     lines.push("  differ in length and layout from the 0x51 file above.");
   } else {
-    lines.push("  No personality file this time: the scanner already had its firmware running, so step 2");
-    lines.push("  (where the loader reports it) was skipped. It is the same on every F-135 and not needed.");
+    lines.push("  No personality-from-loader file this time: the scanner already had its firmware running,");
+    lines.push("  so step 2 was skipped and there was no loader to report it. Nothing is missing on that");
+    lines.push(bootEeprom
+      ? "  account; the 0x51 file above is the chip itself, which is the better record of the two."
+      : "  account; those bytes are the same on every F-135 and can be rewritten from known values.");
   }
   lines.push("  Files: " + prefix + "-*. SHA-256 of every file (this one included) in the SHA256SUMS file.");
   return lines.join("\n") + "\n";
