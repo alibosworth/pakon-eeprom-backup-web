@@ -690,9 +690,12 @@ function buildReadme(prefix) {
     lines.push("  chip it is replaceable; it is kept for completeness.");
   }
   if (bootPersonality) {
-    lines.push("  The personality-8-bytes-from-loader file is what the boot loader reported about itself in");
-    lines.push("  step 2. That is the loader's own descriptor, not a dump of a chip, which is why it can");
-    lines.push("  differ in length and layout from the 0x51 file above.");
+    lines.push("  The personality-8-bytes-from-loader file is what the boot loader answered in step 2, before");
+    lines.push("  the Kodak firmware was sent. It is 8 bytes where the chip holds 9, and on the unit this was");
+    lines.push("  first tested against it was byte for byte the chip's first 8, so the loader relays the chip");
+    lines.push("  rather than making something up. It is kept because it records what the loader actually");
+    lines.push("  reported, which is what decides the firmware image; a loader disagreeing with its own chip");
+    lines.push("  would be worth having caught.");
   } else {
     lines.push("  No personality-from-loader file this time: the scanner already had its firmware running,");
     lines.push("  so step 2 was skipped and there was no loader to report it. Nothing is missing on that");
